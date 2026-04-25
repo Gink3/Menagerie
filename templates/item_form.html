@@ -7,7 +7,12 @@
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
   {% for field in fields %}
-    <label>{{ field.name }}<input name="field_{{ field.id }}" value="{{ values.get(field.id, '') if values is defined else '' }}"></label>
+    <label>{{ field.name }}<input name="field_{{ field.id }}" list="field_{{ field.id }}_suggestions" value="{{ values.get(field.id, '') if values is defined else '' }}"></label>
+    <datalist id="field_{{ field.id }}_suggestions">
+      {% for suggestion in field_suggestions.get(field.id, []) %}
+        <option value="{{ suggestion }}"></option>
+      {% endfor %}
+    </datalist>
   {% endfor %}
   <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
   <label>Images<input name="images" type="file" accept="image/*" multiple></label>

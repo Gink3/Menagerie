@@ -337,6 +337,24 @@ def get_fields(collection_id):
     ).fetchall()
 
 
+def get_field_suggestions(collection_id):
+    suggestions = {}
+    rows = get_db().execute(
+        """
+        select fields.id as field_id, item_values.value
+        from item_values
+        join fields on fields.id = item_values.field_id
+        where fields.collection_id = ? and trim(item_values.value) != ''
+        group by fields.id, item_values.value
+        order by lower(item_values.value)
+        """,
+        (collection_id,),
+    ).fetchall()
+    for row in rows:
+        suggestions.setdefault(row["field_id"], []).append(row["value"])
+    return suggestions
+
+
 def parse_tags(raw_tags):
     seen = set()
     tags = []
@@ -727,7 +745,14 @@ def new_item(collection):
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
         return redirect(url_for("item_detail", item_id=item_id))
-    return render_template("item_form.html", collection=collection, fields=fields, item=None, tags="")
+    return render_template(
+        "item_form.html",
+        collection=collection,
+        fields=fields,
+        field_suggestions=get_field_suggestions(collection_id),
+        item=None,
+        tags="",
+    )
 
 
 @app.route("/items/<int:item_id>")
@@ -792,6 +817,7 @@ def edit_item(item_id):
         "item_form.html",
         collection=collection,
         fields=fields,
+        field_suggestions=get_field_suggestions(item["collection_id"]),
         item=item,
         values=values,
         tags=", ".join(get_item_tags(item_id)),
