@@ -12,7 +12,7 @@
     <nav>
       <a href="{{ url_for('index') }}">Gallery</a>
       {% if g.user %}
-        <a href="{{ url_for('collections_index') }}">Collections</a>
+        <a href="{{ url_for('collections_index') }}">My Collections</a>
         <a href="{{ url_for('my_gallery') }}">My Gallery</a>
         <a href="{{ url_for('user_settings') }}">Settings</a>
         {% if g.user.role == 'admin' %}

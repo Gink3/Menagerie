@@ -483,8 +483,10 @@ def collections_index():
         select collections.*, users.username as owner_username
         from collections
         left join users on users.id = collections.owner_id
+        where collections.owner_id = ?
         order by collections.name
-        """
+        """,
+        (g.user["id"],),
     ).fetchall()
     return render_template("index.html", collections=collections, can_create=user_can_create_collection())
 
