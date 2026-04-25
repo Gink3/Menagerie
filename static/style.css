@@ -127,7 +127,19 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 }
 .image-placeholder { background: var(--placeholder); color: var(--muted); }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
-.tags span { background: var(--tag-bg); border-radius: 999px; color: var(--tag-text); font-size: 12px; font-weight: 700; padding: 4px 8px; }
+.tags span {
+  align-items: center;
+  background: var(--tag-bg);
+  border-radius: 999px;
+  color: var(--tag-text);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  justify-content: center;
+  line-height: 1;
+  min-height: 24px;
+  padding: 4px 10px;
+}
 .detail-layout { display: grid; gap: 18px; grid-template-columns: minmax(280px, 420px) 1fr; }
 .image-strip { display: grid; gap: 10px; }
 .image-strip figure { margin: 0; }
