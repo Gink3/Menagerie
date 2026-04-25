@@ -4,8 +4,14 @@
   <div>
     <h1>{{ collection.name }}</h1>
     <p>{{ collection.description }}</p>
+    <span class="meta">Owner: {{ collection.owner_username or "Unassigned" }}</span>
   </div>
-  <a class="button" href="{{ url_for('new_item', collection_id=collection.id) }}">New item</a>
+  {% if can_manage %}
+    <div class="actions">
+      <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id) }}">Edit collection</a>
+      <a class="button" href="{{ url_for('new_item', collection_id=collection.id) }}">New item</a>
+    </div>
+  {% endif %}
 </div>
 
 <form class="toolbar" method="get">

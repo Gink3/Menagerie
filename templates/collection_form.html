@@ -1,10 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="page-head"><h1>New collection</h1></div>
+<div class="page-head">
+  <h1>{% if collection %}Edit{% else %}New{% endif %} collection</h1>
+</div>
 <form method="post" class="panel stack">
-  <label>Name<input name="name" required></label>
-  <label>Description<textarea name="description" rows="3"></textarea></label>
-  <label>Initial fields<textarea name="fields" rows="6" placeholder="Manufacturer&#10;Model&#10;Condition"></textarea></label>
-  <button type="submit">Create collection</button>
+  <label>Name<input name="name" value="{{ collection.name if collection else '' }}" required></label>
+  <label>Description<textarea name="description" rows="3">{{ collection.description if collection else '' }}</textarea></label>
+  {% if g.user.role == 'admin' %}
+    <label>Owner
+      <select name="owner_id">
+        {% for collector in collectors %}
+          <option value="{{ collector.id }}" {% if collection and collection.owner_id == collector.id %}selected{% elif not collection and g.user.id == collector.id %}selected{% endif %}>{{ collector.username }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  {% endif %}
+  <label>{% if collection %}Add fields{% else %}Initial fields{% endif %}<textarea name="fields" rows="6" placeholder="Manufacturer&#10;Model&#10;Condition"></textarea></label>
+  <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
 </form>
 {% endblock %}

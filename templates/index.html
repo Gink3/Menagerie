@@ -5,7 +5,7 @@
     <h1>Collections</h1>
     <p>Track physical items with custom fields, tags, and images.</p>
   </div>
-  {% if g.user.role == 'admin' %}
+  {% if can_create %}
     <a class="button" href="{{ url_for('new_collection') }}">New collection</a>
   {% endif %}
 </div>
@@ -14,6 +14,7 @@
     <a class="card" href="{{ url_for('collection_view', collection_id=collection.id) }}">
       <h2>{{ collection.name }}</h2>
       <p>{{ collection.description or "No description yet." }}</p>
+      <span class="meta">Owner: {{ collection.owner_username or "Unassigned" }}</span>
     </a>
   {% else %}
     <div class="empty">No collections yet.</div>

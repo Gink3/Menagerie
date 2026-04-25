@@ -25,6 +25,7 @@ DATA_DIR = Path(os.environ.get("MENAGERIE_DATA_DIR", BASE_DIR / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 DATABASE = DATA_DIR / "menagerie.sqlite"
 ALLOWED_IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
+ROLES = {"admin", "collector", "viewer"}
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("MENAGERIE_SECRET_KEY", "dev-change-me")
@@ -55,7 +56,7 @@ def init_db():
             id integer primary key autoincrement,
             username text not null unique,
             password_hash text not null,
-            role text not null default 'user',
+            role text not null default 'collector',
             created_at text not null default current_timestamp
         );
 
@@ -63,6 +64,7 @@ def init_db():
             id integer primary key autoincrement,
             name text not null,
             description text not null default '',
+            owner_id integer references users(id),
             created_at text not null default current_timestamp
         );
 
@@ -116,6 +118,10 @@ def init_db():
         );
         """
     )
+    columns = [row["name"] for row in db.execute("pragma table_info(collections)").fetchall()]
+    if "owner_id" not in columns:
+        db.execute("alter table collections add column owner_id integer references users(id)")
+    db.execute("update users set role = 'collector' where role = 'user'")
     admin_count = db.execute("select count(*) from users where role = 'admin'").fetchone()[0]
     if admin_count == 0:
         username = os.environ.get("MENAGERIE_ADMIN_USERNAME", "admin")
@@ -124,6 +130,9 @@ def init_db():
             "insert into users (username, password_hash, role) values (?, ?, 'admin')",
             (username, generate_password_hash(password)),
         )
+    first_admin = db.execute("select id from users where role = 'admin' order by id limit 1").fetchone()
+    if first_admin:
+        db.execute("update collections set owner_id = ? where owner_id is null", (first_admin["id"],))
     db.commit()
 
 
@@ -158,12 +167,63 @@ def admin_required(view):
     return wrapped_view
 
 
+def normalize_role(role):
+    return role if role in ROLES else "collector"
+
+
+def user_can_create_collection():
+    return g.user is not None and g.user["role"] in {"admin", "collector"}
+
+
+def user_can_manage_collection(collection):
+    if g.user is None:
+        return False
+    if g.user["role"] == "admin":
+        return True
+    return g.user["role"] == "collector" and collection["owner_id"] == g.user["id"]
+
+
+def valid_collection_owner_id(owner_id, fallback_id):
+    try:
+        owner_id = int(owner_id or fallback_id)
+    except (TypeError, ValueError):
+        abort(400)
+    owner = get_db().execute(
+        "select id from users where id = ? and role in ('admin', 'collector')",
+        (owner_id,),
+    ).fetchone()
+    if owner is None:
+        abort(400)
+    return owner["id"]
+
+
+def collection_manager_required(view):
+    @wraps(view)
+    def wrapped_view(collection_id, **kwargs):
+        if g.user is None:
+            return redirect(url_for("login", next=request.path))
+        collection = get_collection(collection_id)
+        if not user_can_manage_collection(collection):
+            abort(403)
+        return view(collection, **kwargs)
+
+    return wrapped_view
+
+
 def row_to_dict(row):
     return dict(row) if row else None
 
 
 def get_collection(collection_id):
-    collection = get_db().execute("select * from collections where id = ?", (collection_id,)).fetchone()
+    collection = get_db().execute(
+        """
+        select collections.*, users.username as owner_username
+        from collections
+        left join users on users.id = collections.owner_id
+        where collections.id = ?
+        """,
+        (collection_id,),
+    ).fetchone()
     if collection is None:
         abort(404)
     return collection
@@ -306,18 +366,33 @@ def logout():
 @app.route("/")
 @login_required
 def index():
-    collections = get_db().execute("select * from collections order by name").fetchall()
-    return render_template("index.html", collections=collections)
+    collections = get_db().execute(
+        """
+        select collections.*, users.username as owner_username
+        from collections
+        left join users on users.id = collections.owner_id
+        order by collections.name
+        """
+    ).fetchall()
+    return render_template("index.html", collections=collections, can_create=user_can_create_collection())
 
 
 @app.route("/collections/new", methods=("GET", "POST"))
-@admin_required
+@login_required
 def new_collection():
+    if not user_can_create_collection():
+        abort(403)
+    db = get_db()
+    collectors = db.execute(
+        "select id, username from users where role in ('admin', 'collector') order by username"
+    ).fetchall()
     if request.method == "POST":
-        db = get_db()
+        owner_id = valid_collection_owner_id(g.user["id"], g.user["id"])
+        if g.user["role"] == "admin":
+            owner_id = valid_collection_owner_id(request.form.get("owner_id"), g.user["id"])
         cursor = db.execute(
-            "insert into collections (name, description) values (?, ?)",
-            (request.form["name"].strip(), request.form.get("description", "").strip()),
+            "insert into collections (name, description, owner_id) values (?, ?, ?)",
+            (request.form["name"].strip(), request.form.get("description", "").strip(), owner_id),
         )
         for position, field_name in enumerate(request.form.get("fields", "").splitlines()):
             field_name = field_name.strip()
@@ -328,7 +403,45 @@ def new_collection():
                 )
         db.commit()
         return redirect(url_for("collection_view", collection_id=cursor.lastrowid))
-    return render_template("collection_form.html")
+    return render_template("collection_form.html", collection=None, collectors=collectors)
+
+
+@app.route("/collections/<int:collection_id>/edit", methods=("GET", "POST"))
+@collection_manager_required
+def edit_collection(collection):
+    db = get_db()
+    collectors = db.execute(
+        "select id, username from users where role in ('admin', 'collector') order by username"
+    ).fetchall()
+    if request.method == "POST":
+        owner_id = collection["owner_id"]
+        if g.user["role"] == "admin":
+            owner_id = valid_collection_owner_id(request.form.get("owner_id"), collection["owner_id"] or g.user["id"])
+        db.execute(
+            "update collections set name = ?, description = ?, owner_id = ? where id = ?",
+            (
+                request.form["name"].strip(),
+                request.form.get("description", "").strip(),
+                owner_id,
+                collection["id"],
+            ),
+        )
+        next_position = db.execute(
+            "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
+            (collection["id"],),
+        ).fetchone()[0]
+        for field_name in request.form.get("fields", "").splitlines():
+            field_name = field_name.strip()
+            if field_name:
+                db.execute(
+                    "insert into fields (collection_id, name, position) values (?, ?, ?)",
+                    (collection["id"], field_name, next_position),
+                )
+                next_position += 1
+        db.commit()
+        flash("Collection saved.", "success")
+        return redirect(url_for("collection_view", collection_id=collection["id"]))
+    return render_template("collection_form.html", collection=collection, collectors=collectors)
 
 
 @app.route("/collections/<int:collection_id>")
@@ -372,13 +485,14 @@ def collection_view(collection_id):
         tag=tag,
         sort=sort,
         direction=direction,
+        can_manage=user_can_manage_collection(collection),
     )
 
 
 @app.route("/collections/<int:collection_id>/items/new", methods=("GET", "POST"))
-@login_required
-def new_item(collection_id):
-    collection = get_collection(collection_id)
+@collection_manager_required
+def new_item(collection):
+    collection_id = collection["id"]
     fields = get_fields(collection_id)
     if request.method == "POST":
         db = get_db()
@@ -421,6 +535,7 @@ def item_detail(item_id):
         values=values,
         images=images,
         tags=get_item_tags(item_id),
+        can_manage=user_can_manage_collection(collection),
     )
 
 
@@ -432,6 +547,8 @@ def edit_item(item_id):
     if item is None:
         abort(404)
     collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
     fields = get_fields(item["collection_id"])
     if request.method == "POST":
         db.execute(
@@ -483,7 +600,7 @@ def admin_users():
     if request.method == "POST":
         username = request.form["username"].strip()
         password = request.form["password"]
-        role = request.form.get("role", "user")
+        role = normalize_role(request.form.get("role", "collector"))
         if username and password:
             db.execute(
                 "insert into users (username, password_hash, role) values (?, ?, ?)",
@@ -498,7 +615,14 @@ def admin_users():
 @app.route("/admin/collections")
 @admin_required
 def admin_collections():
-    collections = get_db().execute("select * from collections order by name").fetchall()
+    collections = get_db().execute(
+        """
+        select collections.*, users.username as owner_username
+        from collections
+        left join users on users.id = collections.owner_id
+        order by collections.name
+        """
+    ).fetchall()
     return render_template("admin_collections.html", collections=collections)
 
 

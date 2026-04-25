@@ -1,6 +1,6 @@
 # Menagerie
 
-Menagerie is a self-hosted web app for managing collections of physical items. It provides username/password login, admin/user roles, multiple collections, custom fields, table and gallery views, filtering, sorting, tags, item detail pages, and multiple image uploads per item.
+Menagerie is a self-hosted web app for managing collections of physical items. It provides username/password login, admin/collector/viewer roles, collection ownership, custom fields, table and gallery views, filtering, sorting, tags, item detail pages, and multiple image uploads per item.
 
 ## Run Locally
 
