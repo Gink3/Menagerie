@@ -212,10 +212,64 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
   position: absolute;
   top: 8px;
 }
-.tile-tools button, .tile-tools .button {
-  border: 1px solid rgb(255 255 255 / 0.32);
-  font-size: 12px;
-  padding: 6px 8px;
+.tile-menu { position: relative; }
+.tile-menu summary {
+  align-items: center;
+  background: rgb(0 0 0 / 0.58);
+  border: 1px solid rgb(255 255 255 / 0.28);
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 18px;
+  height: 30px;
+  justify-content: center;
+  line-height: 1;
+  list-style: none;
+  width: 30px;
+}
+.tile-menu summary::-webkit-details-marker { display: none; }
+.tile-menu a {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  left: 0;
+  min-width: 136px;
+  padding: 8px 10px;
+  position: absolute;
+  top: 36px;
+  z-index: 5;
+}
+.tile-resize-handle {
+  position: absolute;
+  z-index: 4;
+}
+.tile-resize-handle.east {
+  bottom: 18px;
+  cursor: ew-resize;
+  right: 0;
+  top: 18px;
+  width: 12px;
+}
+.tile-resize-handle.south {
+  bottom: 0;
+  cursor: ns-resize;
+  height: 12px;
+  left: 18px;
+  right: 18px;
+}
+.tile-resize-handle.corner {
+  border-bottom: 3px solid rgb(255 255 255 / 0.72);
+  border-right: 3px solid rgb(255 255 255 / 0.72);
+  bottom: 6px;
+  cursor: nwse-resize;
+  height: 18px;
+  right: 6px;
+  width: 18px;
 }
 .crop-layout {
   display: grid;

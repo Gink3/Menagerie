@@ -26,11 +26,14 @@
       </div>
       {% if editable %}
         <div class="tile-tools">
-          <button type="button" data-action="wider">Wider</button>
-          <button type="button" data-action="taller">Taller</button>
-          <button type="button" data-action="smaller">Smaller</button>
-          <a class="button subtle" href="{{ url_for('image_settings', image_id=image.id) }}">Settings</a>
+          <details class="tile-menu">
+            <summary aria-label="Image menu">&vellip;</summary>
+            <a href="{{ url_for('image_settings', image_id=image.id) }}">Image settings</a>
+          </details>
         </div>
+        <span class="tile-resize-handle east" data-resize="east" aria-hidden="true"></span>
+        <span class="tile-resize-handle south" data-resize="south" aria-hidden="true"></span>
+        <span class="tile-resize-handle corner" data-resize="corner" aria-hidden="true"></span>
       {% endif %}
     </article>
   {% else %}
@@ -43,6 +46,7 @@
     const gallery = document.querySelector(".tile-gallery");
     const saveButton = document.querySelector("#save-gallery-layout");
     let draggedTile = null;
+    let resizeState = null;
 
     const syncTileStyle = (tile) => {
       tile.style.setProperty("--tile-x", Number(tile.dataset.x) + 1);
@@ -52,6 +56,10 @@
     };
 
     gallery?.addEventListener("dragstart", (event) => {
+      if (event.target.closest(".tile-resize-handle") || event.target.closest(".tile-tools")) {
+        event.preventDefault();
+        return;
+      }
       draggedTile = event.target.closest(".tile");
     });
 
@@ -76,29 +84,53 @@
       syncTileStyle(target);
     });
 
-    gallery?.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
+    gallery?.addEventListener("pointerdown", (event) => {
+      const handle = event.target.closest(".tile-resize-handle");
+      if (!handle) {
         return;
       }
-      const tile = button.closest(".tile");
-      let w = Number(tile.dataset.w);
-      let h = Number(tile.dataset.h);
-      if (button.dataset.action === "wider") {
-        w = Math.min(6, w + 1);
-      } else if (button.dataset.action === "taller") {
-        h = Math.min(6, h + 1);
-      } else {
-        w = Math.max(1, w - 1);
-        h = Math.max(1, h - 1);
-      }
-      if (Number(tile.dataset.x) + w > 6) {
-        tile.dataset.x = 6 - w;
-      }
-      tile.dataset.w = w;
-      tile.dataset.h = h;
-      syncTileStyle(tile);
+      event.preventDefault();
+      handle.setPointerCapture(event.pointerId);
+      const tile = handle.closest(".tile");
+      resizeState = {
+        handle,
+        tile,
+        mode: handle.dataset.resize,
+        startX: event.clientX,
+        startY: event.clientY,
+        startW: Number(tile.dataset.w),
+        startH: Number(tile.dataset.h),
+      };
     });
+
+    gallery?.addEventListener("pointermove", (event) => {
+      if (!resizeState) {
+        return;
+      }
+      const styles = getComputedStyle(gallery);
+      const gap = Number.parseFloat(styles.rowGap) || 0;
+      const columnWidth = gallery.getBoundingClientRect().width / 6;
+      const rowHeight = (Number.parseFloat(styles.gridAutoRows) || 96) + gap;
+      const deltaW = Math.round((event.clientX - resizeState.startX) / columnWidth);
+      const deltaH = Math.round((event.clientY - resizeState.startY) / rowHeight);
+      let w = resizeState.startW;
+      let h = resizeState.startH;
+      if (resizeState.mode === "east" || resizeState.mode === "corner") {
+        w = Math.max(1, Math.min(6, resizeState.startW + deltaW));
+        if (Number(resizeState.tile.dataset.x) + w > 6) {
+          w = 6 - Number(resizeState.tile.dataset.x);
+        }
+      }
+      if (resizeState.mode === "south" || resizeState.mode === "corner") {
+        h = Math.max(1, Math.min(6, resizeState.startH + deltaH));
+      }
+      resizeState.tile.dataset.w = w;
+      resizeState.tile.dataset.h = h;
+      syncTileStyle(resizeState.tile);
+    });
+
+    gallery?.addEventListener("pointerup", () => { resizeState = null; });
+    gallery?.addEventListener("pointercancel", () => { resizeState = null; });
 
     saveButton?.addEventListener("click", async () => {
       const updates = [...document.querySelectorAll(".tile")].map((tile) => ({
