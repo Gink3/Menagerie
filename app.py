@@ -315,7 +315,7 @@ def gallery_images(owner_id=None, mixed=False):
     order = "users.username, item_images.gallery_y, item_images.gallery_x, item_images.position, item_images.id"
     if mixed:
         order = "item_images.created_at desc, item_images.id desc"
-    return get_db().execute(
+    rows = get_db().execute(
         f"""
         select item_images.*, items.id as item_id, items.name as item_name,
             collections.id as collection_id, collections.name as collection_name,
@@ -329,6 +329,45 @@ def gallery_images(owner_id=None, mixed=False):
         """,
         params,
     ).fetchall()
+    return normalize_gallery_layout(rows)
+
+
+def normalize_gallery_layout(images):
+    normalized = []
+    occupied = set()
+    for position, image in enumerate(images):
+        tile = row_to_dict(image)
+        width = max(1, min(6, tile["gallery_w"]))
+        height = max(1, min(6, tile["gallery_h"]))
+        x = max(0, min(6 - width, tile["gallery_x"]))
+        y = max(0, tile["gallery_y"])
+        if position and tile_overlaps(occupied, x, y, width, height):
+            x, y = next_gallery_slot(occupied, width, height)
+        occupy_gallery_slot(occupied, x, y, width, height)
+        tile["gallery_x"] = x
+        tile["gallery_y"] = y
+        tile["gallery_w"] = width
+        tile["gallery_h"] = height
+        normalized.append(tile)
+    return normalized
+
+
+def tile_overlaps(occupied, x, y, width, height):
+    return any((cell_x, cell_y) in occupied for cell_x in range(x, x + width) for cell_y in range(y, y + height))
+
+
+def occupy_gallery_slot(occupied, x, y, width, height):
+    for cell_x in range(x, x + width):
+        for cell_y in range(y, y + height):
+            occupied.add((cell_x, cell_y))
+
+
+def next_gallery_slot(occupied, width, height):
+    for y in range(1000):
+        for x in range(0, 7 - width):
+            if not tile_overlaps(occupied, x, y, width, height):
+                return x, y
+    return 0, 0
 
 
 def get_fields(collection_id):
