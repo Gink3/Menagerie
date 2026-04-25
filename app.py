@@ -558,9 +558,9 @@ def save_gallery_layout():
     return jsonify({"ok": True})
 
 
-@app.route("/images/<int:image_id>/crop", methods=("GET", "POST"))
+@app.route("/images/<int:image_id>/settings", methods=("GET", "POST"))
 @login_required
-def crop_image(image_id):
+def image_settings(image_id):
     image = get_image(image_id)
     if not user_can_manage_image(image):
         abort(403)
@@ -568,15 +568,30 @@ def crop_image(image_id):
         crop_x = max(0, min(100, float(request.form.get("crop_x", image["crop_x"]))))
         crop_y = max(0, min(100, float(request.form.get("crop_y", image["crop_y"]))))
         crop_zoom = max(1, min(3, float(request.form.get("crop_zoom", image["crop_zoom"]))))
-        gallery_enabled = 1 if request.form.get("gallery_enabled") == "on" else 0
         get_db().execute(
-            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ?, gallery_enabled = ? where id = ?",
-            (crop_x, crop_y, crop_zoom, gallery_enabled, image["id"]),
+            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ? where id = ?",
+            (crop_x, crop_y, crop_zoom, image["id"]),
         )
         get_db().commit()
         flash("Image settings saved.", "success")
         return redirect(url_for("item_detail", item_id=image["item_id"]))
     return render_template("image_crop.html", image=image)
+
+
+@app.route("/images/<int:image_id>/gallery", methods=("POST",))
+@login_required
+def update_image_gallery(image_id):
+    image = get_image(image_id)
+    if not user_can_manage_image(image):
+        abort(403)
+    gallery_enabled = 1 if request.form.get("gallery_enabled") == "on" else 0
+    get_db().execute(
+        "update item_images set gallery_enabled = ? where id = ?",
+        (gallery_enabled, image["id"]),
+    )
+    get_db().commit()
+    flash("Gallery visibility saved.", "success")
+    return redirect(url_for("item_detail", item_id=image["item_id"]))
 
 
 @app.route("/collections/new", methods=("GET", "POST"))

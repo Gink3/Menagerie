@@ -3,7 +3,7 @@
 <div class="page-head">
   <div>
     <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
-    <h1>Crop image</h1>
+    <h1>Image settings</h1>
   </div>
 </div>
 <section class="crop-layout">
@@ -14,7 +14,6 @@
     <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
     <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
     <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
-    <label class="check-row"><input name="gallery_enabled" type="checkbox" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
     <button type="submit">Save image settings</button>
   </form>
 </section>

@@ -29,7 +29,7 @@
           <button type="button" data-action="wider">Wider</button>
           <button type="button" data-action="taller">Taller</button>
           <button type="button" data-action="smaller">Smaller</button>
-          <a class="button subtle" href="{{ url_for('crop_image', image_id=image.id) }}">Crop</a>
+          <a class="button subtle" href="{{ url_for('image_settings', image_id=image.id) }}">Settings</a>
         </div>
       {% endif %}
     </article>

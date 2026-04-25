@@ -9,7 +9,7 @@
     <p>{{ image.collection_name }}</p>
   </div>
   {% if g.user and (g.user.role == 'admin' or g.user.id == image.owner_id) %}
-    <a class="button subtle" href="{{ url_for('crop_image', image_id=image.id) }}">Crop</a>
+    <a class="button subtle" href="{{ url_for('image_settings', image_id=image.id) }}">Settings</a>
   {% endif %}
 </div>
 <section class="detail-layout">

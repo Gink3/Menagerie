@@ -17,7 +17,13 @@
           <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
         </div>
         {% if can_manage %}
-          <figcaption><a href="{{ url_for('crop_image', image_id=image.id) }}">Crop and gallery settings</a></figcaption>
+          <figcaption class="image-actions">
+            <a href="{{ url_for('image_settings', image_id=image.id) }}">Image settings</a>
+            <form action="{{ url_for('update_image_gallery', image_id=image.id) }}" method="post">
+              <label class="check-row"><input name="gallery_enabled" type="checkbox" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
+              <button class="button subtle" type="submit">Save</button>
+            </form>
+          </figcaption>
         {% endif %}
       </figure>
     {% else %}

@@ -144,6 +144,13 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 .image-strip { display: grid; gap: 10px; }
 .image-strip figure { margin: 0; }
 .image-strip figcaption { font-size: 13px; font-weight: 700; margin-top: 6px; }
+.image-actions, .image-actions form {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.image-actions .button { font-size: 12px; padding: 6px 8px; }
 .cropped-image, .gallery-detail-image, .crop-preview {
   background: var(--placeholder);
   border-radius: 8px;
