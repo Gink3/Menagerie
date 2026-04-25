@@ -12,7 +12,14 @@
 <section class="detail-layout">
   <div class="image-strip">
     {% for image in images %}
-      <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}">
+      <figure>
+        <div class="cropped-image">
+          <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+        </div>
+        {% if can_manage %}
+          <figcaption><a href="{{ url_for('crop_image', image_id=image.id) }}">Crop and gallery settings</a></figcaption>
+        {% endif %}
+      </figure>
     {% else %}
       <div class="image-placeholder">No images</div>
     {% endfor %}

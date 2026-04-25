@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    {% if image.owner_id %}
+      <a href="{{ url_for('user_gallery', user_id=image.owner_id) }}">{{ image.owner_username or "Unassigned" }}'s gallery</a>
+    {% endif %}
+    <h1>{{ image.item_name }}</h1>
+    <p>{{ image.collection_name }}</p>
+  </div>
+  {% if g.user and (g.user.role == 'admin' or g.user.id == image.owner_id) %}
+    <a class="button subtle" href="{{ url_for('crop_image', image_id=image.id) }}">Crop</a>
+  {% endif %}
+</div>
+<section class="detail-layout">
+  <div class="gallery-detail-image">
+    <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+  </div>
+  <div class="panel stack">
+    <p>{{ image.item_description }}</p>
+    <dl>
+      <dt>Owner</dt>
+      <dd>
+        {% if image.owner_id %}
+          <a href="{{ url_for('user_gallery', user_id=image.owner_id) }}">{{ image.owner_username or "Unassigned" }}</a>
+        {% else %}
+          Unassigned
+        {% endif %}
+      </dd>
+      <dt>Collection</dt>
+      <dd><a href="{{ url_for('collection_view', collection_id=image.collection_id) }}">{{ image.collection_name }}</a></dd>
+      <dt>Item</dt>
+      <dd><a href="{{ url_for('item_detail', item_id=image.item_id) }}">Open item</a></dd>
+    </dl>
+  </div>
+</section>
+{% endblock %}

@@ -9,17 +9,25 @@
 <body>
   <header class="topbar">
     <a class="brand" href="{{ url_for('index') }}">Menagerie</a>
-    {% if g.user %}
-      <nav>
-        <a href="{{ url_for('index') }}">Collections</a>
+    <nav>
+      <a href="{{ url_for('index') }}">Gallery</a>
+      {% if g.user %}
+        <a href="{{ url_for('collections_index') }}">Collections</a>
+        <a href="{{ url_for('my_gallery') }}">My Gallery</a>
+        <a href="{{ url_for('user_settings') }}">Settings</a>
         {% if g.user.role == 'admin' %}
           <a href="{{ url_for('admin_users') }}">Admin</a>
         {% endif %}
-      </nav>
+      {% endif %}
+    </nav>
+    {% if g.user %}
       <button class="theme-toggle" type="button" aria-pressed="false">Dark</button>
       <form action="{{ url_for('logout') }}" method="post">
         <button class="link-button" type="submit">Log out</button>
       </form>
+    {% else %}
+      <button class="theme-toggle" type="button" aria-pressed="false">Dark</button>
+      <a class="button" href="{{ url_for('login') }}">Log in</a>
     {% endif %}
   </header>
   <main class="shell">

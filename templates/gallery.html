@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if owner %}{{ owner.username }}'s gallery{% else %}Gallery{% endif %}</h1>
+    <p>{% if owner %}A tile layout of selected collection images.{% else %}Selected gallery images from across Menagerie.{% endif %}</p>
+  </div>
+  {% if editable %}
+    <button class="button subtle" id="save-gallery-layout" type="button">Save layout</button>
+  {% endif %}
+</div>
+
+<div class="tile-gallery{% if editable %} editable{% endif %}" data-editable="{{ 'true' if editable else 'false' }}">
+  {% for image in images %}
+    <article class="tile" draggable="{{ 'true' if editable else 'false' }}" data-id="{{ image.id }}" data-x="{{ image.gallery_x }}" data-y="{{ image.gallery_y }}" data-w="{{ image.gallery_w }}" data-h="{{ image.gallery_h }}" style="--tile-x: {{ image.gallery_x + 1 }}; --tile-y: {{ image.gallery_y + 1 }}; --tile-w: {{ image.gallery_w }}; --tile-h: {{ image.gallery_h }};">
+      <a class="tile-link" href="{{ url_for('gallery_image_detail', image_id=image.id) }}">
+        <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+      </a>
+      <div class="tile-meta">
+        <strong>{{ image.item_name }}</strong>
+        {% if image.owner_id %}
+          <a href="{{ url_for('user_gallery', user_id=image.owner_id) }}">{{ image.owner_username or "Unassigned" }}</a>
+        {% else %}
+          <span>Unassigned</span>
+        {% endif %}
+      </div>
+      {% if editable %}
+        <div class="tile-tools">
+          <button type="button" data-action="wider">Wider</button>
+          <button type="button" data-action="taller">Taller</button>
+          <button type="button" data-action="smaller">Smaller</button>
+          <a class="button subtle" href="{{ url_for('crop_image', image_id=image.id) }}">Crop</a>
+        </div>
+      {% endif %}
+    </article>
+  {% else %}
+    <div class="empty">No gallery images yet.</div>
+  {% endfor %}
+</div>
+
+{% if editable %}
+  <script>
+    const gallery = document.querySelector(".tile-gallery");
+    const saveButton = document.querySelector("#save-gallery-layout");
+    let draggedTile = null;
+
+    const syncTileStyle = (tile) => {
+      tile.style.setProperty("--tile-x", Number(tile.dataset.x) + 1);
+      tile.style.setProperty("--tile-y", Number(tile.dataset.y) + 1);
+      tile.style.setProperty("--tile-w", tile.dataset.w);
+      tile.style.setProperty("--tile-h", tile.dataset.h);
+    };
+
+    gallery?.addEventListener("dragstart", (event) => {
+      draggedTile = event.target.closest(".tile");
+    });
+
+    gallery?.addEventListener("dragover", (event) => {
+      if (event.target.closest(".tile")) {
+        event.preventDefault();
+      }
+    });
+
+    gallery?.addEventListener("drop", (event) => {
+      const target = event.target.closest(".tile");
+      if (!draggedTile || !target || draggedTile === target) {
+        return;
+      }
+      event.preventDefault();
+      const dragged = { x: draggedTile.dataset.x, y: draggedTile.dataset.y };
+      draggedTile.dataset.x = target.dataset.x;
+      draggedTile.dataset.y = target.dataset.y;
+      target.dataset.x = dragged.x;
+      target.dataset.y = dragged.y;
+      syncTileStyle(draggedTile);
+      syncTileStyle(target);
+    });
+
+    gallery?.addEventListener("click", (event) => {
+      const button = event.target.closest("button[data-action]");
+      if (!button) {
+        return;
+      }
+      const tile = button.closest(".tile");
+      let w = Number(tile.dataset.w);
+      let h = Number(tile.dataset.h);
+      if (button.dataset.action === "wider") {
+        w = Math.min(6, w + 1);
+      } else if (button.dataset.action === "taller") {
+        h = Math.min(6, h + 1);
+      } else {
+        w = Math.max(1, w - 1);
+        h = Math.max(1, h - 1);
+      }
+      if (Number(tile.dataset.x) + w > 6) {
+        tile.dataset.x = 6 - w;
+      }
+      tile.dataset.w = w;
+      tile.dataset.h = h;
+      syncTileStyle(tile);
+    });
+
+    saveButton?.addEventListener("click", async () => {
+      const updates = [...document.querySelectorAll(".tile")].map((tile) => ({
+        id: Number(tile.dataset.id),
+        x: Number(tile.dataset.x),
+        y: Number(tile.dataset.y),
+        w: Number(tile.dataset.w),
+        h: Number(tile.dataset.h),
+      }));
+      const response = await fetch("{{ url_for('save_gallery_layout') }}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+      saveButton.textContent = response.ok ? "Saved" : "Could not save";
+      setTimeout(() => { saveButton.textContent = "Save layout"; }, 1400);
+    });
+  </script>
+{% endif %}
+{% endblock %}

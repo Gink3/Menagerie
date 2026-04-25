@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Settings</h1>
+    <p>{{ g.user.username }} · {{ g.user.role }}</p>
+  </div>
+</div>
+<form method="post" class="panel stack">
+  <label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>
+  <label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="8" required></label>
+  <label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>
+  <button type="submit">Change password</button>
+</form>
+{% endblock %}

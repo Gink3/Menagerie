@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import (
     Flask,
     abort,
+    jsonify,
     flash,
     g,
     redirect,
@@ -98,6 +99,14 @@ def init_db():
             filename text not null,
             original_name text not null,
             position integer not null default 0,
+            gallery_enabled integer not null default 1,
+            gallery_x integer not null default 0,
+            gallery_y integer not null default 0,
+            gallery_w integer not null default 2,
+            gallery_h integer not null default 2,
+            crop_x real not null default 50,
+            crop_y real not null default 50,
+            crop_zoom real not null default 1,
             created_at text not null default current_timestamp
         );
 
@@ -121,6 +130,20 @@ def init_db():
     columns = [row["name"] for row in db.execute("pragma table_info(collections)").fetchall()]
     if "owner_id" not in columns:
         db.execute("alter table collections add column owner_id integer references users(id)")
+    image_columns = [row["name"] for row in db.execute("pragma table_info(item_images)").fetchall()]
+    image_defaults = {
+        "gallery_enabled": "integer not null default 1",
+        "gallery_x": "integer not null default 0",
+        "gallery_y": "integer not null default 0",
+        "gallery_w": "integer not null default 2",
+        "gallery_h": "integer not null default 2",
+        "crop_x": "real not null default 50",
+        "crop_y": "real not null default 50",
+        "crop_zoom": "real not null default 1",
+    }
+    for column, definition in image_defaults.items():
+        if column not in image_columns:
+            db.execute(f"alter table item_images add column {column} {definition}")
     db.execute("update users set role = 'collector' where role = 'user'")
     admin_count = db.execute("select count(*) from users where role = 'admin'").fetchone()[0]
     if admin_count == 0:
@@ -133,6 +156,26 @@ def init_db():
     first_admin = db.execute("select id from users where role = 'admin' order by id limit 1").fetchone()
     if first_admin:
         db.execute("update collections set owner_id = ? where owner_id is null", (first_admin["id"],))
+    layout_seeded = db.execute("select value from settings where key = 'gallery_layout_seeded'").fetchone()
+    if layout_seeded is None:
+        owner_positions = {}
+        images = db.execute(
+            """
+            select item_images.id, collections.owner_id
+            from item_images
+            join items on items.id = item_images.item_id
+            join collections on collections.id = items.collection_id
+            order by collections.owner_id, item_images.position, item_images.id
+            """
+        ).fetchall()
+        for image in images:
+            position = owner_positions.get(image["owner_id"], 0)
+            db.execute(
+                "update item_images set gallery_x = ?, gallery_y = ? where id = ?",
+                ((position * 2) % 6, (position * 2) // 6, image["id"]),
+            )
+            owner_positions[image["owner_id"]] = position + 1
+        db.execute("insert into settings (key, value) values ('gallery_layout_seeded', '1')")
     db.commit()
 
 
@@ -183,6 +226,14 @@ def user_can_manage_collection(collection):
     return g.user["role"] == "collector" and collection["owner_id"] == g.user["id"]
 
 
+def user_can_manage_image(image):
+    if g.user is None:
+        return False
+    if g.user["role"] == "admin":
+        return True
+    return g.user["role"] == "collector" and image["owner_id"] == g.user["id"]
+
+
 def valid_collection_owner_id(owner_id, fallback_id):
     try:
         owner_id = int(owner_id or fallback_id)
@@ -229,6 +280,57 @@ def get_collection(collection_id):
     return collection
 
 
+def get_user(user_id):
+    user = get_db().execute("select id, username, role, created_at from users where id = ?", (user_id,)).fetchone()
+    if user is None:
+        abort(404)
+    return user
+
+
+def get_image(image_id):
+    image = get_db().execute(
+        """
+        select item_images.*, items.name as item_name, items.description as item_description,
+            items.collection_id, collections.name as collection_name,
+            collections.owner_id, users.username as owner_username
+        from item_images
+        join items on items.id = item_images.item_id
+        join collections on collections.id = items.collection_id
+        left join users on users.id = collections.owner_id
+        where item_images.id = ?
+        """,
+        (image_id,),
+    ).fetchone()
+    if image is None:
+        abort(404)
+    return image
+
+
+def gallery_images(owner_id=None, mixed=False):
+    where = ["item_images.gallery_enabled = 1"]
+    params = []
+    if owner_id is not None:
+        where.append("collections.owner_id = ?")
+        params.append(owner_id)
+    order = "users.username, item_images.gallery_y, item_images.gallery_x, item_images.position, item_images.id"
+    if mixed:
+        order = "item_images.created_at desc, item_images.id desc"
+    return get_db().execute(
+        f"""
+        select item_images.*, items.id as item_id, items.name as item_name,
+            collections.id as collection_id, collections.name as collection_name,
+            collections.owner_id, users.username as owner_username
+        from item_images
+        join items on items.id = item_images.item_id
+        join collections on collections.id = items.collection_id
+        left join users on users.id = collections.owner_id
+        where {" and ".join(where)}
+        order by {order}
+        """,
+        params,
+    ).fetchall()
+
+
 def get_fields(collection_id):
     return get_db().execute(
         "select * from fields where collection_id = ? order by position, id", (collection_id,)
@@ -266,9 +368,14 @@ def save_uploaded_images(item_id, files):
         filename = f"{uuid.uuid4().hex}.{extension}"
         image.save(UPLOAD_DIR / filename)
         current_position += 1
+        gallery_x = (current_position * 2) % 6
+        gallery_y = (current_position * 2) // 6
         db.execute(
-            "insert into item_images (item_id, filename, original_name, position) values (?, ?, ?, ?)",
-            (item_id, filename, original_name, current_position),
+            """
+            insert into item_images (item_id, filename, original_name, position, gallery_x, gallery_y)
+            values (?, ?, ?, ?, ?, ?)
+            """,
+            (item_id, filename, original_name, current_position, gallery_x, gallery_y),
         )
 
 
@@ -352,7 +459,7 @@ def login():
         if user and check_password_hash(user["password_hash"], password):
             session.clear()
             session["user_id"] = user["id"]
-            return redirect(request.args.get("next") or url_for("index"))
+            return redirect(request.args.get("next") or url_for("collections_index"))
         flash("Invalid username or password.", "error")
     return render_template("login.html")
 
@@ -364,8 +471,13 @@ def logout():
 
 
 @app.route("/")
-@login_required
 def index():
+    return render_template("gallery.html", images=gallery_images(mixed=True), owner=None, editable=False)
+
+
+@app.route("/collections")
+@login_required
+def collections_index():
     collections = get_db().execute(
         """
         select collections.*, users.username as owner_username
@@ -375,6 +487,94 @@ def index():
         """
     ).fetchall()
     return render_template("index.html", collections=collections, can_create=user_can_create_collection())
+
+
+@app.route("/settings", methods=("GET", "POST"))
+@login_required
+def user_settings():
+    if request.method == "POST":
+        current_password = request.form.get("current_password", "")
+        new_password = request.form.get("new_password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        user = get_db().execute("select * from users where id = ?", (g.user["id"],)).fetchone()
+        if not check_password_hash(user["password_hash"], current_password):
+            flash("Current password is incorrect.", "error")
+        elif len(new_password) < 8:
+            flash("New password must be at least 8 characters.", "error")
+        elif new_password != confirm_password:
+            flash("New passwords do not match.", "error")
+        else:
+            get_db().execute(
+                "update users set password_hash = ? where id = ?",
+                (generate_password_hash(new_password), g.user["id"]),
+            )
+            get_db().commit()
+            flash("Password updated.", "success")
+            return redirect(url_for("user_settings"))
+    return render_template("user_settings.html")
+
+
+@app.route("/gallery/me")
+@login_required
+def my_gallery():
+    return redirect(url_for("user_gallery", user_id=g.user["id"]))
+
+
+@app.route("/users/<int:user_id>/gallery")
+def user_gallery(user_id):
+    owner = get_user(user_id)
+    editable = g.user is not None and (g.user["role"] == "admin" or g.user["id"] == owner["id"])
+    return render_template("gallery.html", images=gallery_images(owner["id"]), owner=owner, editable=editable)
+
+
+@app.route("/gallery/images/<int:image_id>")
+def gallery_image_detail(image_id):
+    image = get_image(image_id)
+    return render_template("gallery_image.html", image=image)
+
+
+@app.route("/gallery/layout", methods=("POST",))
+@login_required
+def save_gallery_layout():
+    db = get_db()
+    updates = request.get_json(silent=True) or []
+    for update in updates:
+        image = get_image(update.get("id"))
+        if not user_can_manage_image(image):
+            abort(403)
+        x = max(0, min(5, int(update.get("x", image["gallery_x"]))))
+        y = max(0, int(update.get("y", image["gallery_y"])))
+        w = max(1, min(6, int(update.get("w", image["gallery_w"]))))
+        h = max(1, min(6, int(update.get("h", image["gallery_h"]))))
+        if x + w > 6:
+            x = 6 - w
+        db.execute(
+            "update item_images set gallery_x = ?, gallery_y = ?, gallery_w = ?, gallery_h = ? where id = ?",
+            (x, y, w, h, image["id"]),
+        )
+    db.commit()
+    return jsonify({"ok": True})
+
+
+@app.route("/images/<int:image_id>/crop", methods=("GET", "POST"))
+@login_required
+def crop_image(image_id):
+    image = get_image(image_id)
+    if not user_can_manage_image(image):
+        abort(403)
+    if request.method == "POST":
+        crop_x = max(0, min(100, float(request.form.get("crop_x", image["crop_x"]))))
+        crop_y = max(0, min(100, float(request.form.get("crop_y", image["crop_y"]))))
+        crop_zoom = max(1, min(3, float(request.form.get("crop_zoom", image["crop_zoom"]))))
+        gallery_enabled = 1 if request.form.get("gallery_enabled") == "on" else 0
+        get_db().execute(
+            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ?, gallery_enabled = ? where id = ?",
+            (crop_x, crop_y, crop_zoom, gallery_enabled, image["id"]),
+        )
+        get_db().commit()
+        flash("Image settings saved.", "success")
+        return redirect(url_for("item_detail", item_id=image["item_id"]))
+    return render_template("image_crop.html", image=image)
 
 
 @app.route("/collections/new", methods=("GET", "POST"))
@@ -582,7 +782,6 @@ def edit_item(item_id):
 
 
 @app.route("/uploads/<path:filename>")
-@login_required
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 

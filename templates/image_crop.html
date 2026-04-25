@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
+    <h1>Crop image</h1>
+  </div>
+</div>
+<section class="crop-layout">
+  <div class="crop-preview">
+    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+  </div>
+  <form method="post" class="panel stack">
+    <label>Horizontal focus<input id="crop-x" name="crop_x" type="range" min="0" max="100" step="1" value="{{ image.crop_x }}"></label>
+    <label>Vertical focus<input id="crop-y" name="crop_y" type="range" min="0" max="100" step="1" value="{{ image.crop_y }}"></label>
+    <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
+    <label class="check-row"><input name="gallery_enabled" type="checkbox" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
+    <button type="submit">Save image settings</button>
+  </form>
+</section>
+<script>
+  const preview = document.querySelector("#crop-preview-image");
+  const cropX = document.querySelector("#crop-x");
+  const cropY = document.querySelector("#crop-y");
+  const cropZoom = document.querySelector("#crop-zoom");
+  const updateCropPreview = () => {
+    preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
+    preview.style.transform = `scale(${cropZoom.value})`;
+  };
+  [cropX, cropY, cropZoom].forEach((input) => input.addEventListener("input", updateCropPreview));
+</script>
+{% endblock %}

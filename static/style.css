@@ -130,7 +130,83 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 .tags span { background: var(--tag-bg); border-radius: 999px; color: var(--tag-text); font-size: 12px; font-weight: 700; padding: 4px 8px; }
 .detail-layout { display: grid; gap: 18px; grid-template-columns: minmax(280px, 420px) 1fr; }
 .image-strip { display: grid; gap: 10px; }
-.image-strip img { border-radius: 8px; max-height: 460px; object-fit: contain; width: 100%; }
+.image-strip figure { margin: 0; }
+.image-strip figcaption { font-size: 13px; font-weight: 700; margin-top: 6px; }
+.cropped-image, .gallery-detail-image, .crop-preview {
+  background: var(--placeholder);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.cropped-image { aspect-ratio: 4 / 3; }
+.gallery-detail-image, .crop-preview { aspect-ratio: 1 / 1; }
+.cropped-image img, .gallery-detail-image img, .crop-preview img {
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center;
+  width: 100%;
+}
+.tile-gallery {
+  display: grid;
+  gap: 10px;
+  grid-auto-rows: 96px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.tile {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  display: grid;
+  grid-column: var(--tile-x) / span var(--tile-w);
+  grid-row: var(--tile-y) / span var(--tile-h);
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+.tile[draggable="true"] { cursor: move; }
+.tile-link { display: block; min-height: 0; overflow: hidden; }
+.tile-link img {
+  height: 100%;
+  object-fit: cover;
+  transform-origin: center;
+  width: 100%;
+}
+.tile-meta {
+  background: linear-gradient(transparent, rgb(0 0 0 / 0.74));
+  bottom: 0;
+  color: white;
+  display: grid;
+  gap: 2px;
+  left: 0;
+  padding: 34px 10px 10px;
+  position: absolute;
+  right: 0;
+}
+.tile-meta a { color: white; font-size: 13px; font-weight: 700; }
+.tile-tools {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  left: 8px;
+  position: absolute;
+  top: 8px;
+}
+.tile-tools button, .tile-tools .button {
+  border: 1px solid rgb(255 255 255 / 0.32);
+  font-size: 12px;
+  padding: 6px 8px;
+}
+.crop-layout {
+  display: grid;
+  gap: 18px;
+  grid-template-columns: minmax(280px, 1fr) minmax(260px, 360px);
+}
+.check-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+.check-row input { width: auto; }
 dl { display: grid; gap: 8px 14px; grid-template-columns: 160px 1fr; margin: 0; }
 dt { color: var(--muted); font-weight: 800; }
 dd { margin: 0; }
@@ -149,6 +225,9 @@ dd { margin: 0; }
   .topbar { align-items: flex-start; flex-direction: column; gap: 10px; padding: 14px 18px; }
   .theme-toggle { margin-left: 0; }
   .page-head, .detail-layout { display: grid; }
+  .crop-layout { grid-template-columns: 1fr; }
+  .tile-gallery { grid-auto-rows: 78px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tile { grid-column: auto / span min(var(--tile-w), 2); grid-row: auto / span var(--tile-h); }
   .toolbar { grid-template-columns: 1fr; }
   dl { grid-template-columns: 1fr; }
 }
