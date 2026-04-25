@@ -282,6 +282,7 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
   gap: 10px;
 }
 .check-row input { width: auto; }
+.inline-check-form { margin: 0; }
 dl { display: grid; gap: 8px 14px; grid-template-columns: 160px 1fr; margin: 0; }
 dt { color: var(--muted); font-weight: 800; }
 dd { margin: 0; }

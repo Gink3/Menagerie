@@ -55,17 +55,25 @@
   <div class="table-wrap">
     <table>
       <thead>
-        <tr><th>Item</th><th>Tags</th>{% for field in fields %}<th>{{ field.name }}</th>{% endfor %}</tr>
+        <tr><th>Item</th><th>Gallery</th><th>Tags</th>{% for field in fields %}<th>{{ field.name }}</th>{% endfor %}</tr>
       </thead>
       <tbody>
         {% for item in items %}
           <tr>
             <td><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.name }}</a></td>
+            <td>
+              <form class="inline-check-form" action="{{ url_for('update_item_gallery', item_id=item.id) }}" method="post">
+                <label class="check-row">
+                  <input name="gallery_enabled" type="checkbox" {% if item.gallery_enabled %}checked{% endif %} {% if not can_manage or not item.has_images %}disabled{% endif %} onchange="this.form.submit()">
+                  Show
+                </label>
+              </form>
+            </td>
             <td>{{ item.tags|join(", ") }}</td>
             {% for field in fields %}<td>{{ item.fields.get(field.name, "") }}</td>{% endfor %}
           </tr>
         {% else %}
-          <tr><td colspan="{{ fields|length + 2 }}">No items match.</td></tr>
+          <tr><td colspan="{{ fields|length + 3 }}">No items match.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -476,7 +476,7 @@ def collection_items(collection_id):
     ).fetchall()
     images = db.execute(
         """
-        select item_id, filename from item_images
+        select item_id, filename, gallery_enabled from item_images
         where item_id in (select id from items where collection_id = ?)
         order by position, id
         """,
@@ -495,6 +495,8 @@ def collection_items(collection_id):
     for item in items:
         item["fields"] = {}
         item["tags"] = []
+        item["has_images"] = False
+        item["gallery_enabled"] = False
         item["primary_image"] = None
     for row in field_rows:
         next(item for item in items if item["id"] == row["item_id"])["fields"][row["name"]] = row["value"]
@@ -502,6 +504,8 @@ def collection_items(collection_id):
         next(item for item in items if item["id"] == row["item_id"])["tags"].append(row["name"])
     for row in images:
         item = next(item for item in items if item["id"] == row["item_id"])
+        item["has_images"] = True
+        item["gallery_enabled"] = item["gallery_enabled"] or bool(row["gallery_enabled"])
         if item["primary_image"] is None:
             item["primary_image"] = row["filename"]
     return items
@@ -649,6 +653,23 @@ def update_image_gallery(image_id):
     get_db().commit()
     flash("Gallery visibility saved.", "success")
     return redirect(url_for("item_detail", item_id=image["item_id"]))
+
+
+@app.route("/items/<int:item_id>/gallery", methods=("POST",))
+@login_required
+def update_item_gallery(item_id):
+    db = get_db()
+    item = db.execute("select * from items where id = ?", (item_id,)).fetchone()
+    if item is None:
+        abort(404)
+    collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
+    gallery_enabled = 1 if request.form.get("gallery_enabled") == "on" else 0
+    db.execute("update item_images set gallery_enabled = ? where item_id = ?", (gallery_enabled, item_id))
+    db.commit()
+    flash("Gallery visibility saved.", "success")
+    return redirect(url_for("collection_view", collection_id=collection["id"], view="table"))
 
 
 @app.route("/collections/new", methods=("GET", "POST"))
