@@ -7,21 +7,56 @@
   </div>
 </div>
 <section class="crop-layout">
-  <div class="crop-preview">
+  <div class="crop-preview" id="crop-preview">
     <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
   <form method="post" class="panel stack">
+    <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
+    <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
     <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
     <label class="check-row"><input name="gallery_enabled" type="checkbox" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
     <button type="submit">Save image settings</button>
   </form>
 </section>
 <script>
+  const cropBox = document.querySelector("#crop-preview");
   const preview = document.querySelector("#crop-preview-image");
+  const cropX = document.querySelector("#crop-x");
+  const cropY = document.querySelector("#crop-y");
   const cropZoom = document.querySelector("#crop-zoom");
+  let dragStart = null;
+
   const updateCropPreview = () => {
+    preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
     preview.style.transform = `scale(${cropZoom.value})`;
   };
+
+  const clamp = (value) => Math.max(0, Math.min(100, value));
+
+  cropBox.addEventListener("pointerdown", (event) => {
+    cropBox.setPointerCapture(event.pointerId);
+    dragStart = {
+      x: event.clientX,
+      y: event.clientY,
+      cropX: Number(cropX.value),
+      cropY: Number(cropY.value),
+    };
+  });
+
+  cropBox.addEventListener("pointermove", (event) => {
+    if (!dragStart) {
+      return;
+    }
+    const rect = cropBox.getBoundingClientRect();
+    const zoom = Number(cropZoom.value);
+    const sensitivity = 100 / Math.max(rect.width, rect.height) / zoom;
+    cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivity);
+    cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivity);
+    updateCropPreview();
+  });
+
+  cropBox.addEventListener("pointerup", () => { dragStart = null; });
+  cropBox.addEventListener("pointercancel", () => { dragStart = null; });
   cropZoom.addEventListener("input", updateCropPreview);
 </script>
 {% endblock %}

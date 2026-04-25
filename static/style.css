@@ -151,6 +151,8 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 }
 .cropped-image { aspect-ratio: 4 / 3; }
 .gallery-detail-image, .crop-preview { aspect-ratio: 1 / 1; }
+.crop-preview { cursor: grab; touch-action: none; }
+.crop-preview:active { cursor: grabbing; }
 .cropped-image img, .gallery-detail-image img, .crop-preview img {
   height: 100%;
   object-fit: cover;
