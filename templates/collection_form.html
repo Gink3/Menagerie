@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><h1>New collection</h1></div>
+<form method="post" class="panel stack">
+  <label>Name<input name="name" required></label>
+  <label>Description<textarea name="description" rows="3"></textarea></label>
+  <label>Initial fields<textarea name="fields" rows="6" placeholder="Manufacturer&#10;Model&#10;Condition"></textarea></label>
+  <button type="submit">Create collection</button>
+</form>
+{% endblock %}

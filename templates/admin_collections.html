@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-tabs">
+  <a href="{{ url_for('admin_users') }}">Users</a>
+  <a href="{{ url_for('admin_collections') }}">Collections</a>
+  <a href="{{ url_for('admin_fields') }}">Fields</a>
+  <a href="{{ url_for('admin_settings') }}">Settings</a>
+</div>
+<div class="page-head"><h1>Collections</h1><a class="button" href="{{ url_for('new_collection') }}">New collection</a></div>
+<div class="collection-grid">{% for collection in collections %}<a class="card" href="{{ url_for('collection_view', collection_id=collection.id) }}"><h2>{{ collection.name }}</h2><p>{{ collection.description }}</p></a>{% endfor %}</div>
+{% endblock %}

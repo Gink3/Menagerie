@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
+</div>
+<form method="post" enctype="multipart/form-data" class="panel stack">
+  <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
+  <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
+  {% for field in fields %}
+    <label>{{ field.name }}<input name="field_{{ field.id }}" value="{{ values.get(field.id, '') if values is defined else '' }}"></label>
+  {% endfor %}
+  <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
+  <label>Images<input name="images" type="file" accept="image/*" multiple></label>
+  <button type="submit">Save item</button>
+</form>
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ url_for('collection_view', collection_id=collection.id) }}">{{ collection.name }}</a>
+    <h1>{{ item.name }}</h1>
+  </div>
+  <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit</a>
+</div>
+<section class="detail-layout">
+  <div class="image-strip">
+    {% for image in images %}
+      <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}">
+    {% else %}
+      <div class="image-placeholder">No images</div>
+    {% endfor %}
+  </div>
+  <div class="panel stack">
+    <p>{{ item.description }}</p>
+    <div class="tags">{% for tag in tags %}<span>{{ tag }}</span>{% endfor %}</div>
+    <dl>
+      {% for field in fields %}
+        <dt>{{ field.name }}</dt>
+        <dd>{{ values.get(field.id, "") }}</dd>
+      {% endfor %}
+    </dl>
+  </div>
+</section>
+{% endblock %}

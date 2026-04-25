@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ collection.name }}</h1>
+    <p>{{ collection.description }}</p>
+  </div>
+  <a class="button" href="{{ url_for('new_item', collection_id=collection.id) }}">New item</a>
+</div>
+
+<form class="toolbar" method="get">
+  <input name="q" value="{{ query }}" placeholder="Filter items">
+  <input name="tag" value="{{ tag }}" placeholder="Tag">
+  <select name="sort">
+    <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
+    <option value="created_at" {% if sort == 'created_at' %}selected{% endif %}>Created</option>
+    {% for field in fields %}
+      <option value="{{ field.name }}" {% if sort == field.name %}selected{% endif %}>{{ field.name }}</option>
+    {% endfor %}
+  </select>
+  <select name="dir">
+    <option value="asc" {% if direction == 'asc' %}selected{% endif %}>Asc</option>
+    <option value="desc" {% if direction == 'desc' %}selected{% endif %}>Desc</option>
+  </select>
+  <input type="hidden" name="view" value="{{ view }}">
+  <button type="submit">Apply</button>
+  <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='table') }}">Table</a>
+  <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='gallery') }}">Gallery</a>
+</form>
+
+{% if view == 'gallery' %}
+  <div class="gallery">
+    {% for item in items %}
+      <a class="card image-card" href="{{ url_for('item_detail', item_id=item.id) }}">
+        {% if item.primary_image %}
+          <img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="">
+        {% else %}
+          <div class="image-placeholder">No image</div>
+        {% endif %}
+        <h2>{{ item.name }}</h2>
+        <p>{{ item.description }}</p>
+        <div class="tags">{% for tag in item.tags %}<span>{{ tag }}</span>{% endfor %}</div>
+      </a>
+    {% else %}
+      <div class="empty">No items match.</div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Item</th><th>Tags</th>{% for field in fields %}<th>{{ field.name }}</th>{% endfor %}</tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+          <tr>
+            <td><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.name }}</a></td>
+            <td>{{ item.tags|join(", ") }}</td>
+            {% for field in fields %}<td>{{ item.fields.get(field.name, "") }}</td>{% endfor %}
+          </tr>
+        {% else %}
+          <tr><td colspan="{{ fields|length + 2 }}">No items match.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+{% endblock %}

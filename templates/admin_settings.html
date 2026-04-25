@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-tabs">
+  <a href="{{ url_for('admin_users') }}">Users</a>
+  <a href="{{ url_for('admin_collections') }}">Collections</a>
+  <a href="{{ url_for('admin_fields') }}">Fields</a>
+  <a href="{{ url_for('admin_settings') }}">Settings</a>
+</div>
+<div class="page-head"><h1>Settings</h1></div>
+<form method="post" class="panel stack">
+  <label>Site name<input name="site_name" value="{{ settings.get('site_name', 'Menagerie') }}"></label>
+  <label>Default view<select name="default_view"><option value="table" {% if settings.get('default_view') == 'table' %}selected{% endif %}>table</option><option value="gallery" {% if settings.get('default_view') == 'gallery' %}selected{% endif %}>gallery</option></select></label>
+  <button type="submit">Save settings</button>
+</form>
+{% endblock %}
