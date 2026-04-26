@@ -14,7 +14,7 @@
 </div>
 <section class="detail-layout">
   <div class="gallery-detail-image">
-    <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+    <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
   <div class="panel stack">
     <p>{{ image.item_description }}</p>

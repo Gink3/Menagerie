@@ -15,7 +15,7 @@
       </select>
     </label>
   {% endif %}
-  <label>{% if collection %}Add fields{% else %}Initial fields{% endif %}<textarea name="fields" rows="6" placeholder="Manufacturer&#10;Model&#10;Condition"></textarea></label>
+  <label>{% if collection %}Add fields{% else %}Initial fields{% endif %}<textarea name="fields" rows="6" placeholder="Manufacturer&#10;Notes | multiline&#10;Complete | checkbox"></textarea></label>
   <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
 </form>
 {% endblock %}

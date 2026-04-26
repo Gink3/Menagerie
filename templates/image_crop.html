@@ -8,31 +8,57 @@
 </div>
 <section class="crop-layout">
   <div class="crop-preview" id="crop-preview">
-    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
-  <form method="post" class="panel stack">
-    <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
-    <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
-    <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
-    <button type="submit">Save image settings</button>
-  </form>
+  <div class="stack">
+    <form method="post" class="panel stack">
+      <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
+      <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
+      <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
+      <p class="meta" id="crop-status">Saved automatically</p>
+    </form>
+    <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="panel stack">
+      <button class="danger" type="submit">Delete image</button>
+    </form>
+  </div>
 </section>
 <script>
   const cropBox = document.querySelector("#crop-preview");
+  const cropForm = document.querySelector(".crop-layout form");
   const preview = document.querySelector("#crop-preview-image");
   const cropX = document.querySelector("#crop-x");
   const cropY = document.querySelector("#crop-y");
   const cropZoom = document.querySelector("#crop-zoom");
+  const cropStatus = document.querySelector("#crop-status");
   let dragStart = null;
+  let saveTimer = null;
 
   const updateCropPreview = () => {
     preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
+    preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
     preview.style.transform = `scale(${cropZoom.value})`;
   };
 
   const clamp = (value) => Math.max(0, Math.min(100, value));
+  const clampZoom = (value) => Math.max(1, Math.min(3, value));
+
+  const saveCrop = async () => {
+    cropStatus.textContent = "Saving...";
+    const response = await fetch(cropForm.action || window.location.href, {
+      method: "POST",
+      headers: { "X-Requested-With": "fetch" },
+      body: new FormData(cropForm),
+    });
+    cropStatus.textContent = response.ok ? "Saved automatically" : "Could not save";
+  };
+
+  const queueSaveCrop = () => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveCrop, 250);
+  };
 
   cropBox.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
     cropBox.setPointerCapture(event.pointerId);
     dragStart = {
       x: event.clientX,
@@ -46,16 +72,34 @@
     if (!dragStart) {
       return;
     }
+    event.preventDefault();
     const rect = cropBox.getBoundingClientRect();
-    const zoom = Number(cropZoom.value);
-    const sensitivity = 100 / Math.max(rect.width, rect.height) / zoom;
-    cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivity);
-    cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivity);
+    const sensitivityX = 100 / Math.max(rect.width, 1);
+    const sensitivityY = 100 / Math.max(rect.height, 1);
+    cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivityX);
+    cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivityY);
     updateCropPreview();
+    queueSaveCrop();
   });
 
-  cropBox.addEventListener("pointerup", () => { dragStart = null; });
+  cropBox.addEventListener("pointerup", (event) => {
+    dragStart = null;
+    if (cropBox.hasPointerCapture(event.pointerId)) {
+      cropBox.releasePointerCapture(event.pointerId);
+    }
+  });
   cropBox.addEventListener("pointercancel", () => { dragStart = null; });
-  cropZoom.addEventListener("input", updateCropPreview);
+  cropBox.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const nextZoom = clampZoom(Number(cropZoom.value) + (event.deltaY < 0 ? 0.05 : -0.05));
+    cropZoom.value = nextZoom.toFixed(2);
+    updateCropPreview();
+    queueSaveCrop();
+  });
+  preview.addEventListener("dragstart", (event) => { event.preventDefault(); });
+  cropZoom.addEventListener("input", () => {
+    updateCropPreview();
+    queueSaveCrop();
+  });
 </script>
 {% endblock %}

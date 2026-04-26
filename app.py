@@ -28,6 +28,16 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 DATABASE = DATA_DIR / "menagerie.sqlite"
 ALLOWED_IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
 ROLES = {"admin", "collector", "viewer"}
+FIELD_TYPE_CHOICES = (
+    ("text", "Single line text"),
+    ("multiline", "Multi-line text"),
+    ("number", "Number"),
+    ("date", "Date"),
+    ("timestamp", "Timestamp"),
+    ("url", "URL"),
+    ("checkbox", "Checkbox"),
+)
+FIELD_TYPES = {value for value, label in FIELD_TYPE_CHOICES}
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("MENAGERIE_SECRET_KEY", "dev-change-me")
@@ -40,6 +50,7 @@ def get_db():
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         g.db = sqlite3.connect(DATABASE)
         g.db.row_factory = sqlite3.Row
+        g.db.execute("pragma foreign_keys = on")
     return g.db
 
 
@@ -59,6 +70,13 @@ def init_db():
             username text not null unique,
             password_hash text not null,
             role text not null default 'collector',
+            created_at text not null default current_timestamp
+        );
+
+        create table if not exists user_applications (
+            id integer primary key autoincrement,
+            username text not null unique,
+            password_hash text not null,
             created_at text not null default current_timestamp
         );
 
@@ -83,6 +101,10 @@ def init_db():
             collection_id integer not null references collections(id) on delete cascade,
             name text not null,
             description text not null default '',
+            gallery_x integer not null default 0,
+            gallery_y integer not null default 0,
+            gallery_w integer not null default 2,
+            gallery_h integer not null default 2,
             created_at text not null default current_timestamp,
             updated_at text not null default current_timestamp
         );
@@ -100,6 +122,7 @@ def init_db():
             filename text not null,
             original_name text not null,
             position integer not null default 0,
+            gallery_position integer not null default 0,
             gallery_enabled integer not null default 1,
             gallery_x integer not null default 0,
             gallery_y integer not null default 0,
@@ -131,8 +154,22 @@ def init_db():
     columns = [row["name"] for row in db.execute("pragma table_info(collections)").fetchall()]
     if "owner_id" not in columns:
         db.execute("alter table collections add column owner_id integer references users(id)")
+    field_columns = [row["name"] for row in db.execute("pragma table_info(fields)").fetchall()]
+    if "field_type" not in field_columns:
+        db.execute("alter table fields add column field_type text not null default 'text'")
+    item_columns = [row["name"] for row in db.execute("pragma table_info(items)").fetchall()]
+    item_defaults = {
+        "gallery_x": "integer not null default 0",
+        "gallery_y": "integer not null default 0",
+        "gallery_w": "integer not null default 2",
+        "gallery_h": "integer not null default 2",
+    }
+    for column, definition in item_defaults.items():
+        if column not in item_columns:
+            db.execute(f"alter table items add column {column} {definition}")
     image_columns = [row["name"] for row in db.execute("pragma table_info(item_images)").fetchall()]
     image_defaults = {
+        "gallery_position": "integer not null default 0",
         "gallery_enabled": "integer not null default 1",
         "gallery_x": "integer not null default 0",
         "gallery_y": "integer not null default 0",
@@ -177,6 +214,26 @@ def init_db():
             )
             owner_positions[image["owner_id"]] = position + 1
         db.execute("insert into settings (key, value) values ('gallery_layout_seeded', '1')")
+    item_layout_seeded = db.execute("select value from settings where key = 'gallery_item_layout_seeded'").fetchone()
+    if item_layout_seeded is None:
+        owner_positions = {}
+        items = db.execute(
+            """
+            select distinct items.id, collections.owner_id
+            from items
+            join collections on collections.id = items.collection_id
+            join item_images on item_images.item_id = items.id and item_images.gallery_enabled = 1
+            order by collections.owner_id, items.id
+            """
+        ).fetchall()
+        for item in items:
+            position = owner_positions.get(item["owner_id"], 0)
+            db.execute(
+                "update items set gallery_x = ?, gallery_y = ? where id = ?",
+                ((position * 2) % 6, (position * 2) // 6, item["id"]),
+            )
+            owner_positions[item["owner_id"]] = position + 1
+        db.execute("insert into settings (key, value) values ('gallery_item_layout_seeded', '1')")
     db.commit()
 
 
@@ -213,6 +270,26 @@ def admin_required(view):
 
 def normalize_role(role):
     return role if role in ROLES else "collector"
+
+
+def username_exists(username):
+    return (
+        get_db().execute("select 1 from users where lower(username) = lower(?)", (username,)).fetchone()
+        is not None
+    )
+
+
+def application_exists(username):
+    return (
+        get_db()
+        .execute("select 1 from user_applications where lower(username) = lower(?)", (username,))
+        .fetchone()
+        is not None
+    )
+
+
+def is_background_request():
+    return request.headers.get("X-Requested-With") == "fetch"
 
 
 def user_can_create_collection():
@@ -288,6 +365,20 @@ def get_user(user_id):
     return user
 
 
+def get_item(item_id):
+    item = get_db().execute("select * from items where id = ?", (item_id,)).fetchone()
+    if item is None:
+        abort(404)
+    return item
+
+
+def get_field(field_id):
+    field = get_db().execute("select * from fields where id = ?", (field_id,)).fetchone()
+    if field is None:
+        abort(404)
+    return field
+
+
 def get_image(image_id):
     image = get_db().execute(
         """
@@ -313,12 +404,14 @@ def gallery_images(owner_id=None, mixed=False):
     if owner_id is not None:
         where.append("collections.owner_id = ?")
         params.append(owner_id)
-    order = "users.username, item_images.gallery_y, item_images.gallery_x, item_images.position, item_images.id"
+    order = "users.username, items.gallery_y, items.gallery_x, item_images.gallery_position, item_images.position, item_images.id"
     if mixed:
-        order = "item_images.created_at desc, item_images.id desc"
+        order = "items.updated_at desc, item_images.gallery_position, item_images.position, item_images.id"
     rows = get_db().execute(
         f"""
         select item_images.*, items.id as item_id, items.name as item_name,
+            items.gallery_x as item_gallery_x, items.gallery_y as item_gallery_y,
+            items.gallery_w as item_gallery_w, items.gallery_h as item_gallery_h,
             collections.id as collection_id, collections.name as collection_name,
             collections.owner_id, users.username as owner_username
         from item_images
@@ -330,14 +423,50 @@ def gallery_images(owner_id=None, mixed=False):
         """,
         params,
     ).fetchall()
-    return normalize_gallery_layout(rows)
+    gallery_items = []
+    item_lookup = {}
+    for row in rows:
+        item_id = row["item_id"]
+        if item_id not in item_lookup:
+            item = {
+                "id": item_id,
+                "name": row["item_name"],
+                "collection_id": row["collection_id"],
+                "collection_name": row["collection_name"],
+                "owner_id": row["owner_id"],
+                "owner_username": row["owner_username"],
+                "gallery_x": row["item_gallery_x"],
+                "gallery_y": row["item_gallery_y"],
+                "gallery_w": row["item_gallery_w"],
+                "gallery_h": row["item_gallery_h"],
+                "images": [],
+            }
+            item_lookup[item_id] = item
+            gallery_items.append(item)
+        item_lookup[item_id]["images"].append(row)
+    return normalize_gallery_layout(gallery_items)
 
 
-def normalize_gallery_layout(images):
+def gallery_users():
+    return get_db().execute(
+        """
+        select users.id, users.username, count(distinct items.id) as item_count,
+            count(item_images.id) as image_count, min(item_images.filename) as preview_filename
+        from users
+        join collections on collections.owner_id = users.id
+        join items on items.collection_id = collections.id
+        join item_images on item_images.item_id = items.id and item_images.gallery_enabled = 1
+        group by users.id, users.username
+        order by lower(users.username)
+        """
+    ).fetchall()
+
+
+def normalize_gallery_layout(items):
     normalized = []
     occupied = set()
-    for position, image in enumerate(images):
-        tile = row_to_dict(image)
+    for position, item in enumerate(items):
+        tile = row_to_dict(item)
         width = max(1, min(6, tile["gallery_w"]))
         height = max(1, min(6, tile["gallery_h"]))
         x = max(0, min(6 - width, tile["gallery_x"]))
@@ -375,6 +504,60 @@ def get_fields(collection_id):
     return get_db().execute(
         "select * from fields where collection_id = ? order by position, id", (collection_id,)
     ).fetchall()
+
+
+def normalize_field_type(field_type):
+    normalized = (field_type or "text").strip().lower().replace("-", " ").replace("_", " ")
+    aliases = {
+        "single line": "text",
+        "single line text": "text",
+        "multi line": "multiline",
+        "multi line text": "multiline",
+        "multiline text": "multiline",
+        "datetime": "timestamp",
+        "date time": "timestamp",
+        "iso timestamp": "timestamp",
+        "boolean": "checkbox",
+        "true false": "checkbox",
+    }
+    normalized = aliases.get(normalized, normalized.replace(" ", ""))
+    return normalized if normalized in FIELD_TYPES else "text"
+
+
+def parse_field_definition(line):
+    name, separator, raw_type = line.partition("|")
+    name = name.strip()
+    return name, normalize_field_type(raw_type if separator else "text")
+
+
+def field_form_value(field, form):
+    if field["field_type"] == "checkbox":
+        return "true" if form.get(f"field_{field['id']}") else "false"
+    return form.get(f"field_{field['id']}", "").strip()
+
+
+@app.template_filter("display_field_value")
+def display_field_value(value, field_type):
+    if field_type == "checkbox":
+        return "Yes" if value == "true" else "No"
+    return value or ""
+
+
+def value_matches_range(value, minimum=None, maximum=None, field_type="text"):
+    if value == "":
+        return False
+    if field_type == "number":
+        try:
+            value = float(value)
+            minimum = float(minimum) if minimum else None
+            maximum = float(maximum) if maximum else None
+        except (TypeError, ValueError):
+            return False
+    if minimum is not None and minimum != "" and value < minimum:
+        return False
+    if maximum is not None and maximum != "" and value > maximum:
+        return False
+    return True
 
 
 def get_field_suggestions(collection_id):
@@ -426,14 +609,12 @@ def save_uploaded_images(item_id, files):
         filename = f"{uuid.uuid4().hex}.{extension}"
         image.save(UPLOAD_DIR / filename)
         current_position += 1
-        gallery_x = (current_position * 2) % 6
-        gallery_y = (current_position * 2) // 6
         db.execute(
             """
-            insert into item_images (item_id, filename, original_name, position, gallery_x, gallery_y)
-            values (?, ?, ?, ?, ?, ?)
+            insert into item_images (item_id, filename, original_name, position, gallery_position)
+            values (?, ?, ?, ?, ?)
             """,
-            (item_id, filename, original_name, current_position, gallery_x, gallery_y),
+            (item_id, filename, original_name, current_position, current_position),
         )
 
 
@@ -526,6 +707,31 @@ def login():
     return render_template("login.html")
 
 
+@app.route("/apply", methods=("GET", "POST"))
+def apply():
+    if request.method == "POST":
+        username = request.form["username"].strip()
+        password = request.form["password"]
+        confirm_password = request.form.get("confirm_password", "")
+        if not username:
+            flash("Username is required.", "error")
+        elif len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+        elif password != confirm_password:
+            flash("Passwords do not match.", "error")
+        elif username_exists(username) or application_exists(username):
+            flash("That username is already taken or awaiting approval.", "error")
+        else:
+            get_db().execute(
+                "insert into user_applications (username, password_hash) values (?, ?)",
+                (username, generate_password_hash(password)),
+            )
+            get_db().commit()
+            flash("Application submitted. An admin will review it before you can sign in.", "success")
+            return redirect(url_for("login"))
+    return render_template("apply.html")
+
+
 @app.route("/logout", methods=("POST",))
 def logout():
     session.clear()
@@ -584,6 +790,11 @@ def my_gallery():
     return redirect(url_for("user_gallery", user_id=g.user["id"]))
 
 
+@app.route("/galleries")
+def user_galleries():
+    return render_template("user_galleries.html", users=gallery_users())
+
+
 @app.route("/users/<int:user_id>/gallery")
 def user_gallery(user_id):
     owner = get_user(user_id)
@@ -603,18 +814,19 @@ def save_gallery_layout():
     db = get_db()
     updates = request.get_json(silent=True) or []
     for update in updates:
-        image = get_image(update.get("id"))
-        if not user_can_manage_image(image):
+        item = get_item(update.get("id"))
+        collection = get_collection(item["collection_id"])
+        if not user_can_manage_collection(collection):
             abort(403)
-        x = max(0, min(5, int(update.get("x", image["gallery_x"]))))
-        y = max(0, int(update.get("y", image["gallery_y"])))
-        w = max(1, min(6, int(update.get("w", image["gallery_w"]))))
-        h = max(1, min(6, int(update.get("h", image["gallery_h"]))))
+        x = max(0, min(5, int(update.get("x", item["gallery_x"]))))
+        y = max(0, int(update.get("y", item["gallery_y"])))
+        w = max(1, min(6, int(update.get("w", item["gallery_w"]))))
+        h = max(1, min(6, int(update.get("h", item["gallery_h"]))))
         if x + w > 6:
             x = 6 - w
         db.execute(
-            "update item_images set gallery_x = ?, gallery_y = ?, gallery_w = ?, gallery_h = ? where id = ?",
-            (x, y, w, h, image["id"]),
+            "update items set gallery_x = ?, gallery_y = ?, gallery_w = ?, gallery_h = ? where id = ?",
+            (x, y, w, h, item["id"]),
         )
     db.commit()
     return jsonify({"ok": True})
@@ -635,9 +847,27 @@ def image_settings(image_id):
             (crop_x, crop_y, crop_zoom, image["id"]),
         )
         get_db().commit()
+        if is_background_request():
+            return jsonify({"ok": True})
         flash("Image settings saved.", "success")
         return redirect(url_for("item_detail", item_id=image["item_id"]))
     return render_template("image_crop.html", image=image)
+
+
+@app.route("/images/<int:image_id>/delete", methods=("POST",))
+@login_required
+def delete_image(image_id):
+    image = get_image(image_id)
+    if not user_can_manage_image(image):
+        abort(403)
+    get_db().execute("delete from item_images where id = ?", (image["id"],))
+    get_db().commit()
+    try:
+        (UPLOAD_DIR / image["filename"]).unlink()
+    except FileNotFoundError:
+        pass
+    flash("Image deleted.", "success")
+    return redirect(url_for("item_detail", item_id=image["item_id"]))
 
 
 @app.route("/images/<int:image_id>/gallery", methods=("POST",))
@@ -654,6 +884,50 @@ def update_image_gallery(image_id):
     get_db().commit()
     flash("Gallery visibility saved.", "success")
     return redirect(url_for("item_detail", item_id=image["item_id"]))
+
+
+@app.route("/items/<int:item_id>/images/gallery", methods=("POST",))
+@login_required
+def update_item_image_gallery(item_id):
+    db = get_db()
+    item = get_item(item_id)
+    collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
+    images = db.execute("select id from item_images where item_id = ?", (item_id,)).fetchall()
+    image_ids = {image["id"] for image in images}
+    selected_ids = []
+    for raw_id in request.form.getlist("gallery_image_ids"):
+        try:
+            image_id = int(raw_id)
+        except (TypeError, ValueError):
+            continue
+        if image_id in image_ids:
+            selected_ids.append(image_id)
+    selected_ids = list(dict.fromkeys(selected_ids))
+    def requested_gallery_position(image_id):
+        try:
+            return int(request.form.get(f"gallery_position_{image_id}") or 0)
+        except (TypeError, ValueError):
+            return 0
+    ordered_ids = sorted(
+        selected_ids,
+        key=lambda image_id: (
+            requested_gallery_position(image_id),
+            selected_ids.index(image_id),
+        ),
+    )
+    db.execute("update item_images set gallery_enabled = 0 where item_id = ?", (item_id,))
+    for position, image_id in enumerate(ordered_ids):
+        db.execute(
+            "update item_images set gallery_enabled = 1, gallery_position = ? where id = ?",
+            (position, image_id),
+        )
+    db.commit()
+    if is_background_request():
+        return jsonify({"ok": True})
+    flash("Gallery images saved.", "success")
+    return redirect(url_for("item_detail", item_id=item_id))
 
 
 @app.route("/items/<int:item_id>/gallery", methods=("POST",))
@@ -690,12 +964,12 @@ def new_collection():
             "insert into collections (name, description, owner_id) values (?, ?, ?)",
             (request.form["name"].strip(), request.form.get("description", "").strip(), owner_id),
         )
-        for position, field_name in enumerate(request.form.get("fields", "").splitlines()):
-            field_name = field_name.strip()
+        for position, field_line in enumerate(request.form.get("fields", "").splitlines()):
+            field_name, field_type = parse_field_definition(field_line)
             if field_name:
                 db.execute(
-                    "insert into fields (collection_id, name, position) values (?, ?, ?)",
-                    (cursor.lastrowid, field_name, position),
+                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
+                    (cursor.lastrowid, field_name, field_type, position),
                 )
         db.commit()
         return redirect(url_for("collection_view", collection_id=cursor.lastrowid))
@@ -726,12 +1000,12 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_name in request.form.get("fields", "").splitlines():
-            field_name = field_name.strip()
+        for field_line in request.form.get("fields", "").splitlines():
+            field_name, field_type = parse_field_definition(field_line)
             if field_name:
                 db.execute(
-                    "insert into fields (collection_id, name, position) values (?, ?, ?)",
-                    (collection["id"], field_name, next_position),
+                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
+                    (collection["id"], field_name, field_type, next_position),
                 )
                 next_position += 1
         db.commit()
@@ -749,8 +1023,18 @@ def collection_view(collection_id):
     view = request.args.get("view", settings.get("default_view", "table"))
     query = request.args.get("q", "").strip().lower()
     tag = request.args.get("tag", "").strip().lower()
+    image_status = request.args.get("image_status", "")
+    gallery_status = request.args.get("gallery_status", "")
     sort = request.args.get("sort", "name")
     direction = request.args.get("dir", "asc")
+    field_filters = {}
+    field_ranges = {}
+    for field in fields:
+        raw_value = request.args.get(f"field_{field['id']}", "").strip()
+        raw_min = request.args.get(f"field_{field['id']}_min", "").strip()
+        raw_max = request.args.get(f"field_{field['id']}_max", "").strip()
+        field_filters[field["id"]] = raw_value
+        field_ranges[field["id"]] = {"min": raw_min, "max": raw_max}
     items = collection_items(collection_id)
 
     if query:
@@ -764,6 +1048,35 @@ def collection_view(collection_id):
         ]
     if tag:
         items = [item for item in items if tag in item["tags"]]
+    if image_status == "with":
+        items = [item for item in items if item["has_images"]]
+    elif image_status == "without":
+        items = [item for item in items if not item["has_images"]]
+    if gallery_status == "shown":
+        items = [item for item in items if item["gallery_enabled"]]
+    elif gallery_status == "hidden":
+        items = [item for item in items if not item["gallery_enabled"]]
+    for field in fields:
+        value = field_filters.get(field["id"], "")
+        field_name = field["name"]
+        if value:
+            if field["field_type"] == "checkbox":
+                items = [item for item in items if item["fields"].get(field_name, "") == value]
+            else:
+                value_lower = value.lower()
+                items = [item for item in items if value_lower in item["fields"].get(field_name, "").lower()]
+        value_range = field_ranges.get(field["id"], {})
+        if value_range.get("min") or value_range.get("max"):
+            items = [
+                item
+                for item in items
+                if value_matches_range(
+                    item["fields"].get(field_name, ""),
+                    value_range.get("min"),
+                    value_range.get("max"),
+                    field["field_type"],
+                )
+            ]
 
     reverse = direction == "desc"
     if sort in [field["name"] for field in fields]:
@@ -779,6 +1092,10 @@ def collection_view(collection_id):
         view=view,
         query=query,
         tag=tag,
+        image_status=image_status,
+        gallery_status=gallery_status,
+        field_filters=field_filters,
+        field_ranges=field_ranges,
         sort=sort,
         direction=direction,
         can_manage=user_can_manage_collection(collection),
@@ -800,7 +1117,7 @@ def new_item(collection):
         for field in fields:
             db.execute(
                 "insert into item_values (item_id, field_id, value) values (?, ?, ?)",
-                (item_id, field["id"], request.form.get(f"field_{field['id']}", "").strip()),
+                (item_id, field["id"], field_form_value(field, request.form)),
             )
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
@@ -829,7 +1146,14 @@ def item_detail(item_id):
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))
     }
-    images = db.execute("select * from item_images where item_id = ? order by position, id", (item_id,)).fetchall()
+    images = db.execute(
+        """
+        select * from item_images
+        where item_id = ?
+        order by gallery_enabled desc, gallery_position, position, id
+        """,
+        (item_id,),
+    ).fetchall()
     return render_template(
         "item_detail.html",
         item=item,
@@ -864,7 +1188,7 @@ def edit_item(item_id):
                 insert into item_values (item_id, field_id, value) values (?, ?, ?)
                 on conflict(item_id, field_id) do update set value = excluded.value
                 """,
-                (item_id, field["id"], request.form.get(f"field_{field['id']}", "").strip()),
+                (item_id, field["id"], field_form_value(field, request.form)),
             )
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
@@ -885,6 +1209,32 @@ def edit_item(item_id):
     )
 
 
+@app.route("/items/<int:item_id>/duplicate", methods=("POST",))
+@login_required
+def duplicate_item(item_id):
+    db = get_db()
+    item = get_item(item_id)
+    collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
+    cursor = db.execute(
+        "insert into items (collection_id, name, description) values (?, ?, ?)",
+        (item["collection_id"], f"{item['name']} copy", item["description"]),
+    )
+    new_item_id = cursor.lastrowid
+    values = db.execute("select field_id, value from item_values where item_id = ?", (item_id,)).fetchall()
+    for value in values:
+        db.execute(
+            "insert into item_values (item_id, field_id, value) values (?, ?, ?)",
+            (new_item_id, value["field_id"], value["value"]),
+        )
+    tags = get_item_tags(item_id)
+    replace_item_tags(new_item_id, tags)
+    db.commit()
+    flash("Item duplicated.", "success")
+    return redirect(url_for("edit_item", item_id=new_item_id))
+
+
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
@@ -901,6 +1251,48 @@ def admin_index():
     return redirect(url_for("admin_users"))
 
 
+@app.route("/admin/applicants")
+@admin_required
+def admin_applicants():
+    applications = get_db().execute(
+        "select id, username, created_at from user_applications order by created_at"
+    ).fetchall()
+    return render_template("admin_applicants.html", applications=applications)
+
+
+@app.route("/admin/applicants/<int:application_id>/approve", methods=("POST",))
+@admin_required
+def approve_applicant(application_id):
+    db = get_db()
+    application = db.execute("select * from user_applications where id = ?", (application_id,)).fetchone()
+    if application is None:
+        abort(404)
+    if username_exists(application["username"]):
+        flash("That username is already in use. The application was not approved.", "error")
+        return redirect(url_for("admin_applicants"))
+    db.execute(
+        "insert into users (username, password_hash, role) values (?, ?, 'collector')",
+        (application["username"], application["password_hash"]),
+    )
+    db.execute("delete from user_applications where id = ?", (application_id,))
+    db.commit()
+    flash(f"{application['username']} was approved.", "success")
+    return redirect(url_for("admin_applicants"))
+
+
+@app.route("/admin/applicants/<int:application_id>/decline", methods=("POST",))
+@admin_required
+def decline_applicant(application_id):
+    db = get_db()
+    application = db.execute("select username from user_applications where id = ?", (application_id,)).fetchone()
+    if application is None:
+        abort(404)
+    db.execute("delete from user_applications where id = ?", (application_id,))
+    db.commit()
+    flash(f"{application['username']} was declined.", "success")
+    return redirect(url_for("admin_applicants"))
+
+
 @app.route("/admin/users", methods=("GET", "POST"))
 @admin_required
 def admin_users():
@@ -909,7 +1301,9 @@ def admin_users():
         username = request.form["username"].strip()
         password = request.form["password"]
         role = normalize_role(request.form.get("role", "collector"))
-        if username and password:
+        if username_exists(username) or application_exists(username):
+            flash("That username is already taken or awaiting approval.", "error")
+        elif username and password:
             db.execute(
                 "insert into users (username, password_hash, role) values (?, ?, ?)",
                 (username, generate_password_hash(password), role),
@@ -942,7 +1336,7 @@ def admin_fields():
     selected_id = int(request.form.get("collection_id") or request.args.get("collection_id") or collections[0]["id"]) if collections else None
     if request.method == "POST" and selected_id:
         name = request.form["name"].strip()
-        field_type = request.form.get("field_type", "text")
+        field_type = normalize_field_type(request.form.get("field_type", "text"))
         if name:
             position = db.execute(
                 "select coalesce(max(position), -1) + 1 from fields where collection_id = ?", (selected_id,)
@@ -953,7 +1347,47 @@ def admin_fields():
             )
             db.commit()
     fields = get_fields(selected_id) if selected_id else []
-    return render_template("admin_fields.html", collections=collections, selected_id=selected_id, fields=fields)
+    return render_template(
+        "admin_fields.html",
+        collections=collections,
+        selected_id=selected_id,
+        fields=fields,
+        field_type_choices=FIELD_TYPE_CHOICES,
+        field_type_labels=dict(FIELD_TYPE_CHOICES),
+    )
+
+
+@app.route("/admin/fields/<int:field_id>/update", methods=("POST",))
+@admin_required
+def update_field(field_id):
+    db = get_db()
+    field = get_field(field_id)
+    name = request.form["name"].strip()
+    field_type = normalize_field_type(request.form.get("field_type", field["field_type"]))
+    try:
+        position = max(0, int(request.form.get("position", field["position"])))
+    except (TypeError, ValueError):
+        position = field["position"]
+    if name:
+        db.execute(
+            "update fields set name = ?, field_type = ?, position = ? where id = ?",
+            (name, field_type, position, field["id"]),
+        )
+        db.commit()
+        flash("Field saved.", "success")
+    return redirect(url_for("admin_fields", collection_id=field["collection_id"]))
+
+
+@app.route("/admin/fields/<int:field_id>/delete", methods=("POST",))
+@admin_required
+def delete_field(field_id):
+    db = get_db()
+    field = get_field(field_id)
+    db.execute("delete from item_values where field_id = ?", (field["id"],))
+    db.execute("delete from fields where id = ?", (field["id"],))
+    db.commit()
+    flash("Field deleted.", "success")
+    return redirect(url_for("admin_fields", collection_id=field["collection_id"]))
 
 
 @app.route("/admin/settings", methods=("GET", "POST"))

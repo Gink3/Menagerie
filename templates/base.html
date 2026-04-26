@@ -15,6 +15,7 @@
     </a>
     <nav>
       <a href="{{ url_for('index') }}">Gallery</a>
+      <a href="{{ url_for('user_galleries') }}">User Galleries</a>
       {% if g.user %}
         <a href="{{ url_for('collections_index') }}">My Collections</a>
         <a href="{{ url_for('my_gallery') }}">My Gallery</a>
@@ -34,7 +35,7 @@
       <a class="button" href="{{ url_for('login') }}">Log in</a>
     {% endif %}
   </header>
-  <main class="shell">
+  <main class="shell {% block shell_class %}{% endblock %}">
     {% for category, message in get_flashed_messages(with_categories=true) %}
       <div class="flash {{ category }}">{{ message }}</div>
     {% endfor %}

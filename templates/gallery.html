@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block shell_class %}gallery-shell{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -11,15 +12,21 @@
 </div>
 
 <div class="tile-gallery{% if editable %} editable{% endif %}" data-editable="{{ 'true' if editable else 'false' }}">
-  {% for image in images %}
-    <article class="tile" draggable="{{ 'true' if editable else 'false' }}" data-id="{{ image.id }}" data-x="{{ image.gallery_x }}" data-y="{{ image.gallery_y }}" data-w="{{ image.gallery_w }}" data-h="{{ image.gallery_h }}" style="--tile-x: {{ image.gallery_x + 1 }}; --tile-y: {{ image.gallery_y + 1 }}; --tile-w: {{ image.gallery_w }}; --tile-h: {{ image.gallery_h }};">
-      <a class="tile-link" href="{{ url_for('gallery_image_detail', image_id=image.id) }}">
-        <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+  {% for item in images %}
+    <article class="tile" draggable="{{ 'true' if editable else 'false' }}" data-id="{{ item.id }}" data-x="{{ item.gallery_x }}" data-y="{{ item.gallery_y }}" data-w="{{ item.gallery_w }}" data-h="{{ item.gallery_h }}" data-slide="0" style="--tile-x: {{ item.gallery_x + 1 }}; --tile-y: {{ item.gallery_y + 1 }}; --tile-w: {{ item.gallery_w }}; --tile-h: {{ item.gallery_h }};">
+      <a class="tile-link" href="{{ url_for('item_detail', item_id=item.id) }}">
+        {% for image in item.images %}
+          <img class="tile-slide{% if loop.first %} active{% endif %}" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+        {% endfor %}
       </a>
+      {% if item.images|length > 1 %}
+        <button class="tile-slide-control previous" type="button" data-slide-step="-1" aria-label="Previous image">&lsaquo;</button>
+        <button class="tile-slide-control next" type="button" data-slide-step="1" aria-label="Next image">&rsaquo;</button>
+      {% endif %}
       <div class="tile-meta">
-        <strong>{{ image.item_name }}</strong>
-        {% if image.owner_id %}
-          <a href="{{ url_for('user_gallery', user_id=image.owner_id) }}">{{ image.owner_username or "Unassigned" }}</a>
+        <strong>{{ item.name }}</strong>
+        {% if item.owner_id %}
+          <a href="{{ url_for('user_gallery', user_id=item.owner_id) }}">{{ item.owner_username or "Unassigned" }}</a>
         {% else %}
           <span>Unassigned</span>
         {% endif %}
@@ -28,7 +35,7 @@
         <div class="tile-tools">
           <details class="tile-menu">
             <summary aria-label="Image menu">&vellip;</summary>
-            <a href="{{ url_for('image_settings', image_id=image.id) }}">Image settings</a>
+            <a href="{{ url_for('item_detail', item_id=item.id) }}">Item images</a>
           </details>
         </div>
         <span class="tile-resize-handle east" data-resize="east" aria-hidden="true"></span>
@@ -40,6 +47,22 @@
     <div class="empty">No gallery images yet.</div>
   {% endfor %}
 </div>
+
+<script>
+  document.querySelectorAll(".tile-slide-control").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const tile = button.closest(".tile");
+      const slides = [...tile.querySelectorAll(".tile-slide")];
+      const current = Number(tile.dataset.slide || 0);
+      const next = (current + Number(button.dataset.slideStep) + slides.length) % slides.length;
+      slides[current]?.classList.remove("active");
+      slides[next]?.classList.add("active");
+      tile.dataset.slide = next;
+    });
+  });
+</script>
 
 {% if editable %}
   <script>
@@ -56,7 +79,7 @@
     };
 
     gallery?.addEventListener("dragstart", (event) => {
-      if (event.target.closest(".tile-resize-handle") || event.target.closest(".tile-tools")) {
+      if (event.target.closest(".tile-resize-handle") || event.target.closest(".tile-tools") || event.target.closest(".tile-slide-control")) {
         event.preventDefault();
         return;
       }

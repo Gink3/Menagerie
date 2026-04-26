@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% block shell_class %}wide-shell{% endblock %}
 {% block content %}
 <div class="page-head">
   <div>
@@ -32,6 +33,38 @@
   <button type="submit">Apply</button>
   <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='table') }}">Table</a>
   <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='gallery') }}">Gallery</a>
+  <div class="advanced-filters panel">
+    <label>Images
+      <select name="image_status">
+        <option value="" {% if not image_status %}selected{% endif %}>Any</option>
+        <option value="with" {% if image_status == 'with' %}selected{% endif %}>With images</option>
+        <option value="without" {% if image_status == 'without' %}selected{% endif %}>Without images</option>
+      </select>
+    </label>
+    <label>Gallery
+      <select name="gallery_status">
+        <option value="" {% if not gallery_status %}selected{% endif %}>Any</option>
+        <option value="shown" {% if gallery_status == 'shown' %}selected{% endif %}>Shown</option>
+        <option value="hidden" {% if gallery_status == 'hidden' %}selected{% endif %}>Hidden</option>
+      </select>
+    </label>
+    {% for field in fields %}
+      {% if field.field_type == "checkbox" %}
+        <label>{{ field.name }}
+          <select name="field_{{ field.id }}">
+            <option value="" {% if not field_filters.get(field.id) %}selected{% endif %}>Any</option>
+            <option value="true" {% if field_filters.get(field.id) == "true" %}selected{% endif %}>Yes</option>
+            <option value="false" {% if field_filters.get(field.id) == "false" %}selected{% endif %}>No</option>
+          </select>
+        </label>
+      {% elif field.field_type in ["number", "date", "timestamp"] %}
+        <label>{{ field.name }} from<input name="field_{{ field.id }}_min" type="{{ 'number' if field.field_type == 'number' else 'date' }}" value="{{ field_ranges.get(field.id, {}).get('min', '') }}"></label>
+        <label>{{ field.name }} to<input name="field_{{ field.id }}_max" type="{{ 'number' if field.field_type == 'number' else 'date' }}" value="{{ field_ranges.get(field.id, {}).get('max', '') }}"></label>
+      {% else %}
+        <label>{{ field.name }}<input name="field_{{ field.id }}" value="{{ field_filters.get(field.id, '') }}"></label>
+      {% endif %}
+    {% endfor %}
+  </div>
 </form>
 
 {% if view == 'gallery' %}
@@ -52,28 +85,20 @@
     {% endfor %}
   </div>
 {% else %}
-  <div class="table-wrap">
-    <table>
+  <div class="table-wrap collection-table-wrap">
+    <table class="collection-table" style="--field-count: {{ fields|length }};">
       <thead>
-        <tr><th>Item</th><th>Gallery</th><th>Tags</th>{% for field in fields %}<th>{{ field.name }}</th>{% endfor %}</tr>
+        <tr><th class="item-column">Item</th><th class="tags-column">Tags</th>{% for field in fields %}<th class="field-column">{{ field.name }}</th>{% endfor %}</tr>
       </thead>
       <tbody>
         {% for item in items %}
           <tr>
-            <td><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.name }}</a></td>
-            <td>
-              <form class="inline-check-form" action="{{ url_for('update_item_gallery', item_id=item.id) }}" method="post">
-                <label class="check-row">
-                  <input name="gallery_enabled" type="checkbox" {% if item.gallery_enabled %}checked{% endif %} {% if not can_manage or not item.has_images %}disabled{% endif %} onchange="this.form.submit()">
-                  Show
-                </label>
-              </form>
-            </td>
-            <td>{{ item.tags|join(", ") }}</td>
-            {% for field in fields %}<td>{{ item.fields.get(field.name, "") }}</td>{% endfor %}
+            <td class="item-column"><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.name }}</a></td>
+            <td class="tags-column">{{ item.tags|join(", ") }}</td>
+            {% for field in fields %}<td class="field-column field-value">{{ item.fields.get(field.name, "")|display_field_value(field.field_type) }}</td>{% endfor %}
           </tr>
         {% else %}
-          <tr><td colspan="{{ fields|length + 3 }}">No items match.</td></tr>
+          <tr><td colspan="{{ fields|length + 2 }}">No items match.</td></tr>
         {% endfor %}
       </tbody>
     </table>

@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="admin-tabs">
+  <a href="{{ url_for('admin_users') }}">Users</a>
+  <a href="{{ url_for('admin_applicants') }}">Applicants</a>
+  <a href="{{ url_for('admin_collections') }}">Collections</a>
+  <a href="{{ url_for('admin_fields') }}">Fields</a>
+  <a href="{{ url_for('admin_settings') }}">Settings</a>
+</div>
+<div class="page-head"><h1>Applicants</h1></div>
+<div class="table-wrap">
+  <table>
+    <tr><th>Username</th><th>Applied</th><th></th></tr>
+    {% for application in applications %}
+      <tr>
+        <td>{{ application.username }}</td>
+        <td>{{ application.created_at }}</td>
+        <td class="table-actions">
+          <form method="post" action="{{ url_for('approve_applicant', application_id=application.id) }}">
+            <button type="submit">Approve</button>
+          </form>
+          <form method="post" action="{{ url_for('decline_applicant', application_id=application.id) }}">
+            <button class="subtle" type="submit">Decline</button>
+          </form>
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="3">No applications awaiting review.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -7,12 +7,21 @@
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
   {% for field in fields %}
-    <label>{{ field.name }}<input name="field_{{ field.id }}" list="field_{{ field.id }}_suggestions" value="{{ values.get(field.id, '') if values is defined else '' }}"></label>
-    <datalist id="field_{{ field.id }}_suggestions">
-      {% for suggestion in field_suggestions.get(field.id, []) %}
-        <option value="{{ suggestion }}"></option>
-      {% endfor %}
-    </datalist>
+    {% set field_value = values.get(field.id, '') if values is defined else '' %}
+    {% if field.field_type == "multiline" %}
+      <label>{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
+    {% elif field.field_type == "checkbox" %}
+      <label class="check-row"><input name="field_{{ field.id }}" type="checkbox" value="true" {% if field_value == "true" %}checked{% endif %}> {{ field.name }}</label>
+    {% else %}
+      <label>{{ field.name }}<input name="field_{{ field.id }}" type="{{ 'date' if field.field_type == 'timestamp' else field.field_type if field.field_type in ['number', 'date', 'url'] else 'text' }}" {% if field.field_type in ['text', 'url'] %}list="field_{{ field.id }}_suggestions"{% endif %} value="{{ field_value }}"></label>
+      {% if field.field_type in ["text", "url"] %}
+        <datalist id="field_{{ field.id }}_suggestions">
+          {% for suggestion in field_suggestions.get(field.id, []) %}
+            <option value="{{ suggestion }}"></option>
+          {% endfor %}
+        </datalist>
+      {% endif %}
+    {% endif %}
   {% endfor %}
   <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
   <label>Images<input name="images" type="file" accept="image/*" multiple></label>

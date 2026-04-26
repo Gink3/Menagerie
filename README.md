@@ -2,6 +2,16 @@
 
 Menagerie is a self-hosted web app for managing collections of physical items. It provides username/password login, admin/collector/viewer roles, collection ownership, custom fields, table and gallery views, filtering, sorting, tags, item detail pages, and multiple image uploads per item.
 
+## Screenshots
+
+![Collection table view with filters](.images/CollectionExample.png)
+
+The collection view shows a wide, filterable table for a single collection. Custom fields become sortable columns, and the advanced filters let you narrow items by image status, gallery status, tags, and field values while keeping large collections horizontally scrollable.
+
+![Gallery view with selected item images](.images/GalleryExample.png)
+
+The gallery view displays selected item images as visual tiles. Each tile highlights the item name and owner, using the saved crop and gallery layout so collectors can present selected items as a browsable showcase.
+
 ## Run Locally
 
 ```powershell

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>User Galleries</h1>
+    <p>Public galleries with selected collection images.</p>
+  </div>
+</div>
+<div class="collection-grid">
+  {% for user in users %}
+    <a class="card image-card" href="{{ url_for('user_gallery', user_id=user.id) }}">
+      {% if user.preview_filename %}
+        <img src="{{ url_for('uploaded_file', filename=user.preview_filename) }}" alt="">
+      {% else %}
+        <div class="image-placeholder">No image</div>
+      {% endif %}
+      <h2>{{ user.username }}</h2>
+      <p>{{ user.item_count }} items, {{ user.image_count }} images</p>
+    </a>
+  {% else %}
+    <div class="empty">No user galleries yet.</div>
+  {% endfor %}
+</div>
+{% endblock %}

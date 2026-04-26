@@ -2,6 +2,7 @@
 {% block content %}
 <div class="admin-tabs">
   <a href="{{ url_for('admin_users') }}">Users</a>
+  <a href="{{ url_for('admin_applicants') }}">Applicants</a>
   <a href="{{ url_for('admin_collections') }}">Collections</a>
   <a href="{{ url_for('admin_fields') }}">Fields</a>
   <a href="{{ url_for('admin_settings') }}">Settings</a>
@@ -15,10 +16,39 @@
   <form method="post" class="toolbar">
     <input type="hidden" name="collection_id" value="{{ selected_id }}">
     <input name="name" placeholder="Field name" required>
-    <select name="field_type"><option>text</option><option>number</option><option>date</option><option>url</option></select>
+    <select name="field_type">
+      {% for value, label in field_type_choices %}
+        <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </select>
     <button type="submit">Add field</button>
   </form>
-  <div class="table-wrap"><table><tr><th>Name</th><th>Type</th></tr>{% for field in fields %}<tr><td>{{ field.name }}</td><td>{{ field.field_type }}</td></tr>{% endfor %}</table></div>
+  <div class="table-wrap">
+    <table>
+      <tr><th>Name</th><th>Type</th><th>Position</th><th></th></tr>
+      {% for field in fields %}
+        <tr>
+          <td colspan="4">
+            <form class="field-row" method="post" action="{{ url_for('update_field', field_id=field.id) }}">
+              <input name="name" value="{{ field.name }}" required>
+              <select name="field_type">
+                {% for value, label in field_type_choices %}
+                  <option value="{{ value }}" {% if field.field_type == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+              <input name="position" type="number" min="0" value="{{ field.position }}">
+              <button type="submit">Save</button>
+            </form>
+            <form class="field-delete-form" method="post" action="{{ url_for('delete_field', field_id=field.id) }}">
+              <button class="danger" type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="4">No fields yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
 {% else %}
   <div class="empty">Create a collection first.</div>
 {% endif %}
