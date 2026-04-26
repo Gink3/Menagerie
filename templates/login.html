@@ -1,7 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="auth-panel">
-  <h1>Sign in</h1>
+  <div class="auth-brand">
+    <img src="{{ url_for('asset_file', filename='Menagerie_Logo_Large.png') }}" alt="Menagerie logo" width="132" height="132">
+    <h1>Sign in</h1>
+  </div>
   <form method="post" class="stack">
     <label>Username<input name="username" autocomplete="username" required></label>
     <label>Password<input name="password" type="password" autocomplete="current-password" required></label>

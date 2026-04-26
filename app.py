@@ -22,6 +22,7 @@ from werkzeug.utils import secure_filename
 
 
 BASE_DIR = Path(__file__).resolve().parent
+ASSET_DIR = BASE_DIR / "assets"
 DATA_DIR = Path(os.environ.get("MENAGERIE_DATA_DIR", BASE_DIR / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
 DATABASE = DATA_DIR / "menagerie.sqlite"
@@ -887,6 +888,11 @@ def edit_item(item_id):
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
+
+
+@app.route("/assets/<path:filename>")
+def asset_file(filename):
+    return send_from_directory(ASSET_DIR, filename)
 
 
 @app.route("/admin")

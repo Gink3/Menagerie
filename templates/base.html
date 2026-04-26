@@ -4,11 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Menagerie</title>
+  <link rel="icon" type="image/png" href="{{ url_for('asset_file', filename='Menagerie_Logo_Small.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="{{ url_for('index') }}">Menagerie</a>
+    <a class="brand" href="{{ url_for('index') }}" aria-label="Menagerie home">
+      <img class="brand-logo" src="{{ url_for('asset_file', filename='Menagerie_Logo_Small.png') }}" alt="" width="40" height="40">
+      <span>Menagerie</span>
+    </a>
     <nav>
       <a href="{{ url_for('index') }}">Gallery</a>
       {% if g.user %}
