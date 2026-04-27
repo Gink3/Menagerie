@@ -11,6 +11,9 @@
         <button class="subtle" type="submit">Duplicate</button>
       </form>
       <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit</a>
+      <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}" onsubmit="return confirm('Delete this item and all of its images? This cannot be undone.');">
+        <button class="danger" type="submit">Delete</button>
+      </form>
     </div>
   {% endif %}
 </div>
@@ -18,12 +21,12 @@
   {% if can_manage %}
     <form class="image-strip" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
       {% for image in images %}
-        <figure class="item-image-row" data-image-id="{{ image.id }}">
+        <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true">
           <div class="cropped-image">
             <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
           </div>
           <figcaption class="image-actions">
-            <button class="image-drag-handle subtle" type="button" draggable="true" aria-label="Reorder image">Move</button>
+            <div class="image-drag-handle" aria-hidden="true">Drag to reorder</div>
             <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
             <label class="image-order">Order<input name="gallery_position_{{ image.id }}" type="number" min="1" value="{{ image.gallery_position + 1 }}" {% if not image.gallery_enabled %}disabled{% endif %}></label>
             <a href="{{ url_for('image_settings', image_id=image.id) }}">Crop</a>
@@ -83,6 +86,40 @@
       });
     };
 
+    const selectedImageRows = () => [...document.querySelectorAll(".item-image-row")]
+      .filter((row) => row.querySelector(".gallery-image-toggle")?.checked);
+
+    const moveSelectedRowsBeforeUnselected = (rows) => {
+      const firstUnselected = [...document.querySelectorAll(".item-image-row")]
+        .find((row) => !row.querySelector(".gallery-image-toggle")?.checked);
+      const anchor = firstUnselected || galleryImageStatus;
+      rows.forEach((row) => {
+        galleryImageForm.insertBefore(row, anchor);
+      });
+    };
+
+    const moveImageToOrder = (input) => {
+      const row = input.closest(".item-image-row");
+      const toggle = row?.querySelector(".gallery-image-toggle");
+      if (!row || !toggle?.checked) {
+        return;
+      }
+      const rows = selectedImageRows();
+      const currentIndex = rows.indexOf(row);
+      const requestedPosition = Number(input.value);
+      const targetIndex = Number.isFinite(requestedPosition)
+        ? Math.max(0, Math.min(rows.length - 1, requestedPosition - 1))
+        : currentIndex;
+      if (currentIndex === -1 || currentIndex === targetIndex) {
+        renumberGalleryImages();
+        return;
+      }
+      rows.splice(currentIndex, 1);
+      rows.splice(targetIndex, 0, row);
+      moveSelectedRowsBeforeUnselected(rows);
+      renumberGalleryImages();
+    };
+
     const saveGalleryImages = async () => {
       if (!galleryImageForm) {
         return;
@@ -118,24 +155,36 @@
       });
     });
     document.querySelectorAll(".image-order input").forEach((input) => {
-      input.addEventListener("change", queueGalleryImageSave);
-    });
-    document.querySelectorAll(".image-drag-handle").forEach((handle) => {
-      handle.addEventListener("dragstart", (event) => {
-        draggedImageRow = handle.closest(".item-image-row");
-        event.dataTransfer.effectAllowed = "move";
-      });
-      handle.addEventListener("dragend", () => {
-        draggedImageRow = null;
+      input.addEventListener("change", () => {
+        moveImageToOrder(input);
+        queueGalleryImageSave();
       });
     });
     document.querySelectorAll(".item-image-row").forEach((row) => {
+      row.addEventListener("dragstart", (event) => {
+        if (event.target.closest("input, a, button, select, textarea")) {
+          event.preventDefault();
+          return;
+        }
+        draggedImageRow = row;
+        row.classList.add("dragging");
+        event.dataTransfer.effectAllowed = "move";
+      });
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        draggedImageRow = null;
+      });
       row.addEventListener("dragover", (event) => {
         if (draggedImageRow) {
           event.preventDefault();
+          row.classList.add("drag-over");
         }
       });
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drag-over");
+      });
       row.addEventListener("drop", (event) => {
+        row.classList.remove("drag-over");
         if (!draggedImageRow || draggedImageRow === row) {
           return;
         }

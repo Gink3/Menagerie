@@ -1235,6 +1235,26 @@ def duplicate_item(item_id):
     return redirect(url_for("edit_item", item_id=new_item_id))
 
 
+@app.route("/items/<int:item_id>/delete", methods=("POST",))
+@login_required
+def delete_item(item_id):
+    db = get_db()
+    item = get_item(item_id)
+    collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
+    images = db.execute("select filename from item_images where item_id = ?", (item_id,)).fetchall()
+    db.execute("delete from items where id = ?", (item_id,))
+    db.commit()
+    for image in images:
+        try:
+            (UPLOAD_DIR / image["filename"]).unlink()
+        except FileNotFoundError:
+            pass
+    flash("Item deleted.", "success")
+    return redirect(url_for("collection_view", collection_id=collection["id"]))
+
+
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)

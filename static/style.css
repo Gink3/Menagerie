@@ -210,9 +210,22 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 }
 .image-actions .button { font-size: 12px; padding: 6px 8px; }
 .item-image-row {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: grab;
   display: grid;
-  gap: 10px;
-  grid-template-columns: 140px 1fr;
+  gap: 12px;
+  grid-template-columns: 150px 1fr;
+  padding: 12px;
+}
+.item-image-row.dragging {
+  cursor: grabbing;
+  opacity: 0.58;
+}
+.item-image-row.drag-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
 }
 .image-order {
   align-items: center;
@@ -221,8 +234,14 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 }
 .image-order input { max-width: 80px; }
 .image-drag-handle {
+  background: var(--accent-soft);
+  border-radius: 6px;
+  color: var(--accent-dark);
   cursor: grab;
-  padding: 6px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 7px 9px;
+  text-align: center;
 }
 .cropped-image, .gallery-detail-image, .crop-preview {
   background: var(--placeholder);
