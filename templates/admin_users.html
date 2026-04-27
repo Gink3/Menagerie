@@ -9,6 +9,7 @@
 </div>
 <div class="page-head"><h1>Users</h1></div>
 <form method="post" class="toolbar">
+  {{ csrf_field()|safe }}
   <input name="username" placeholder="Username" required>
   <input name="password" type="password" placeholder="Password" required>
   <select name="role"><option>collector</option><option>viewer</option><option>admin</option></select>

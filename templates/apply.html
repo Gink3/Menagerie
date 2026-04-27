@@ -6,6 +6,7 @@
     <h1>Apply</h1>
   </div>
   <form method="post" class="stack">
+    {{ csrf_field()|safe }}
     <label>Username<input name="username" autocomplete="username" required></label>
     <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
     <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>

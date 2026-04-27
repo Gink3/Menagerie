@@ -4,6 +4,7 @@
   <h1>{% if collection %}Edit{% else %}New{% endif %} collection</h1>
 </div>
 <form method="post" class="panel stack">
+  {{ csrf_field()|safe }}
   <label>Name<input name="name" value="{{ collection.name if collection else '' }}" required></label>
   <label>Description<textarea name="description" rows="3">{{ collection.description if collection else '' }}</textarea></label>
   {% if g.user.role == 'admin' %}

@@ -1,8 +1,11 @@
 import os
+import secrets
 import sqlite3
+import time
 import uuid
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import (
     Flask,
@@ -17,6 +20,7 @@ from flask import (
     session,
     url_for,
 )
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
 
@@ -42,6 +46,13 @@ FIELD_TYPES = {value for value, label in FIELD_TYPE_CHOICES}
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("MENAGERIE_SECRET_KEY", "dev-change-me")
 app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SAMESITE", "Lax")
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SECURE", "0") == "1"
+if os.environ.get("MENAGERIE_PROXY_FIX", "1") == "1":
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
+
+RATE_LIMITS = {}
 
 
 def get_db():
@@ -187,6 +198,12 @@ def init_db():
     if admin_count == 0:
         username = os.environ.get("MENAGERIE_ADMIN_USERNAME", "admin")
         password = os.environ.get("MENAGERIE_ADMIN_PASSWORD", "admin123")
+        if (
+            os.environ.get("MENAGERIE_ALLOW_INSECURE_DEFAULTS") != "1"
+            and username == "admin"
+            and password == "admin123"
+        ):
+            raise RuntimeError("Set MENAGERIE_ADMIN_USERNAME and MENAGERIE_ADMIN_PASSWORD before first startup.")
         db.execute(
             "insert into users (username, password_hash, role) values (?, ?, 'admin')",
             (username, generate_password_hash(password)),
@@ -237,13 +254,33 @@ def init_db():
     db.commit()
 
 
+def enforce_secure_config():
+    if os.environ.get("MENAGERIE_ALLOW_INSECURE_DEFAULTS") == "1":
+        return
+    if app.config["SECRET_KEY"] == "dev-change-me":
+        raise RuntimeError("Set MENAGERIE_SECRET_KEY before running Menagerie publicly.")
+
+
 @app.before_request
 def load_current_user():
+    enforce_secure_config()
     init_db()
     user_id = session.get("user_id")
     g.user = None
     if user_id:
         g.user = get_db().execute("select * from users where id = ?", (user_id,)).fetchone()
+    if request.method == "POST" and not valid_csrf_token(request.form.get("csrf_token") or request.headers.get("X-CSRFToken")):
+        abort(400)
+
+
+@app.after_request
+def add_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
 
 
 def login_required(view):
@@ -270,6 +307,47 @@ def admin_required(view):
 
 def normalize_role(role):
     return role if role in ROLES else "collector"
+
+
+def csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def valid_csrf_token(token):
+    return bool(token and session.get("csrf_token") and secrets.compare_digest(token, session["csrf_token"]))
+
+
+@app.context_processor
+def inject_security_helpers():
+    return {"csrf_token": csrf_token, "csrf_field": csrf_field}
+
+
+def csrf_field():
+    return f'<input type="hidden" name="csrf_token" value="{csrf_token()}">'
+
+
+def local_redirect_target(target, fallback):
+    if not target:
+        return fallback
+    parsed = urlparse(target)
+    if parsed.scheme or parsed.netloc or not target.startswith("/"):
+        return fallback
+    return target
+
+
+def rate_limit(key, limit, window_seconds):
+    now = time.time()
+    attempts = [timestamp for timestamp in RATE_LIMITS.get(key, []) if now - timestamp < window_seconds]
+    if len(attempts) >= limit:
+        RATE_LIMITS[key] = attempts
+        return False
+    attempts.append(now)
+    RATE_LIMITS[key] = attempts
+    return True
 
 
 def username_exists(username):
@@ -304,12 +382,37 @@ def user_can_manage_collection(collection):
     return g.user["role"] == "collector" and collection["owner_id"] == g.user["id"]
 
 
+def user_can_view_collection(collection):
+    if g.user is None:
+        return False
+    if g.user["role"] == "admin":
+        return True
+    return collection["owner_id"] == g.user["id"]
+
+
 def user_can_manage_image(image):
     if g.user is None:
         return False
     if g.user["role"] == "admin":
         return True
     return g.user["role"] == "collector" and image["owner_id"] == g.user["id"]
+
+
+def image_is_public(image):
+    return bool(image["gallery_enabled"])
+
+
+def item_is_public(item_id):
+    return (
+        get_db()
+        .execute("select 1 from item_images where item_id = ? and gallery_enabled = 1", (item_id,))
+        .fetchone()
+        is not None
+    )
+
+
+def user_can_view_image(image):
+    return image_is_public(image) or user_can_manage_image(image)
 
 
 def valid_collection_owner_id(owner_id, fallback_id):
@@ -696,13 +799,17 @@ def collection_items(collection_id):
 @app.route("/login", methods=("GET", "POST"))
 def login():
     if request.method == "POST":
+        rate_key = ("login", request.remote_addr or "unknown")
+        if not rate_limit(rate_key, 8, 15 * 60):
+            flash("Too many login attempts. Try again later.", "error")
+            return render_template("login.html"), 429
         username = request.form["username"].strip()
         password = request.form["password"]
         user = get_db().execute("select * from users where username = ?", (username,)).fetchone()
         if user and check_password_hash(user["password_hash"], password):
             session.clear()
             session["user_id"] = user["id"]
-            return redirect(request.args.get("next") or url_for("collections_index"))
+            return redirect(local_redirect_target(request.args.get("next"), url_for("collections_index")))
         flash("Invalid username or password.", "error")
     return render_template("login.html")
 
@@ -710,6 +817,10 @@ def login():
 @app.route("/apply", methods=("GET", "POST"))
 def apply():
     if request.method == "POST":
+        rate_key = ("apply", request.remote_addr or "unknown")
+        if not rate_limit(rate_key, 5, 60 * 60):
+            flash("Too many applications from this address. Try again later.", "error")
+            return render_template("apply.html"), 429
         username = request.form["username"].strip()
         password = request.form["password"]
         confirm_password = request.form.get("confirm_password", "")
@@ -805,6 +916,8 @@ def user_gallery(user_id):
 @app.route("/gallery/images/<int:image_id>")
 def gallery_image_detail(image_id):
     image = get_image(image_id)
+    if not user_can_view_image(image):
+        abort(404)
     return render_template("gallery_image.html", image=image)
 
 
@@ -1018,6 +1131,8 @@ def edit_collection(collection):
 @login_required
 def collection_view(collection_id):
     collection = get_collection(collection_id)
+    if not user_can_view_collection(collection):
+        abort(403)
     fields = get_fields(collection_id)
     settings = {row["key"]: row["value"] for row in get_db().execute("select * from settings")}
     view = request.args.get("view", settings.get("default_view", "table"))
@@ -1134,13 +1249,17 @@ def new_item(collection):
 
 
 @app.route("/items/<int:item_id>")
-@login_required
 def item_detail(item_id):
     db = get_db()
     item = db.execute("select * from items where id = ?", (item_id,)).fetchone()
     if item is None:
         abort(404)
     collection = get_collection(item["collection_id"])
+    can_manage = user_can_manage_collection(collection)
+    if not can_manage and not item_is_public(item_id):
+        if g.user is None:
+            return redirect(url_for("login", next=request.path))
+        abort(403)
     fields = get_fields(item["collection_id"])
     values = {
         row["field_id"]: row["value"]
@@ -1149,10 +1268,10 @@ def item_detail(item_id):
     images = db.execute(
         """
         select * from item_images
-        where item_id = ?
+        where item_id = ? and (? = 1 or gallery_enabled = 1)
         order by gallery_enabled desc, gallery_position, position, id
         """,
-        (item_id,),
+        (item_id, 1 if can_manage else 0),
     ).fetchall()
     return render_template(
         "item_detail.html",
@@ -1162,7 +1281,7 @@ def item_detail(item_id):
         values=values,
         images=images,
         tags=get_item_tags(item_id),
-        can_manage=user_can_manage_collection(collection),
+        can_manage=can_manage,
     )
 
 
@@ -1257,6 +1376,18 @@ def delete_item(item_id):
 
 @app.route("/uploads/<path:filename>")
 def uploaded_file(filename):
+    image = get_db().execute(
+        """
+        select item_images.*, collections.owner_id
+        from item_images
+        join items on items.id = item_images.item_id
+        join collections on collections.id = items.collection_id
+        where item_images.filename = ?
+        """,
+        (filename,),
+    ).fetchone()
+    if image is None or not user_can_view_image(image):
+        abort(404)
     return send_from_directory(UPLOAD_DIR, filename)
 
 

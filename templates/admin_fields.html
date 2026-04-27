@@ -14,6 +14,7 @@
     <button type="submit">Select</button>
   </form>
   <form method="post" class="toolbar">
+    {{ csrf_field()|safe }}
     <input type="hidden" name="collection_id" value="{{ selected_id }}">
     <input name="name" placeholder="Field name" required>
     <select name="field_type">
@@ -30,6 +31,7 @@
         <tr>
           <td colspan="4">
             <form class="field-row" method="post" action="{{ url_for('update_field', field_id=field.id) }}">
+              {{ csrf_field()|safe }}
               <input name="name" value="{{ field.name }}" required>
               <select name="field_type">
                 {% for value, label in field_type_choices %}
@@ -40,6 +42,7 @@
               <button type="submit">Save</button>
             </form>
             <form class="field-delete-form" method="post" action="{{ url_for('delete_field', field_id=field.id) }}">
+              {{ csrf_field()|safe }}
               <button class="danger" type="submit">Delete</button>
             </form>
           </td>

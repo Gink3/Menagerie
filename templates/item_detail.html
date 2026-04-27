@@ -8,10 +8,12 @@
   {% if can_manage %}
     <div class="actions">
       <form method="post" action="{{ url_for('duplicate_item', item_id=item.id) }}">
+        {{ csrf_field()|safe }}
         <button class="subtle" type="submit">Duplicate</button>
       </form>
       <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit</a>
       <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}" onsubmit="return confirm('Delete this item and all of its images? This cannot be undone.');">
+        {{ csrf_field()|safe }}
         <button class="danger" type="submit">Delete</button>
       </form>
     </div>
@@ -20,6 +22,7 @@
 <section class="detail-layout">
   {% if can_manage %}
     <form class="image-strip" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
+      {{ csrf_field()|safe }}
       {% for image in images %}
         <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true">
           <div class="cropped-image">
@@ -127,7 +130,7 @@
       galleryImageStatus.textContent = "Saving...";
       const response = await fetch(galleryImageForm.action, {
         method: "POST",
-        headers: { "X-Requested-With": "fetch" },
+        headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
         body: new FormData(galleryImageForm),
       });
       galleryImageStatus.textContent = response.ok ? "Saved automatically" : "Could not save";

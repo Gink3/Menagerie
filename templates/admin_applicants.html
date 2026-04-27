@@ -17,9 +17,11 @@
         <td>{{ application.created_at }}</td>
         <td class="table-actions">
           <form method="post" action="{{ url_for('approve_applicant', application_id=application.id) }}">
+            {{ csrf_field()|safe }}
             <button type="submit">Approve</button>
           </form>
           <form method="post" action="{{ url_for('decline_applicant', application_id=application.id) }}">
+            {{ csrf_field()|safe }}
             <button class="subtle" type="submit">Decline</button>
           </form>
         </td>

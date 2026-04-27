@@ -47,6 +47,36 @@ docker run --rm -p 8000:8000 `
   menagerie:latest
 ```
 
+## Reverse Proxy
+
+Menagerie is designed to run behind an HTTPS reverse proxy such as nginx. The app trusts standard proxy headers when `MENAGERIE_PROXY_FIX=1`, which is enabled by default.
+
+Recommended container environment for public HTTPS:
+
+```text
+MENAGERIE_SECRET_KEY=use-a-long-random-secret
+MENAGERIE_ADMIN_USERNAME=your-admin-user
+MENAGERIE_ADMIN_PASSWORD=change-this-password
+MENAGERIE_DATA_DIR=/app/data
+MENAGERIE_SESSION_COOKIE_SECURE=1
+MENAGERIE_PROXY_FIX=1
+```
+
+Minimal nginx location:
+
+```nginx
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    client_max_body_size 32m;
+}
+```
+
+For public deployments, keep `/app/data` on persistent storage and back it up regularly. Menagerie refuses to run with the default secret key and refuses first-start admin creation with the default `admin/admin123` credentials unless `MENAGERIE_ALLOW_INSECURE_DEFAULTS=1` is set.
+
 ## Push To zot
 
 The zot registry catalog is available at:
@@ -80,5 +110,9 @@ Restart Docker, then run the `docker push` command again.
 | `MENAGERIE_ADMIN_USERNAME` | `admin` | Initial admin username created when no admin exists. |
 | `MENAGERIE_ADMIN_PASSWORD` | `admin123` | Initial admin password created when no admin exists. |
 | `MENAGERIE_DATA_DIR` | `/app/data` in Docker | Directory for SQLite data and uploads. |
+| `MENAGERIE_SESSION_COOKIE_SECURE` | `0` | Set to `1` when served through HTTPS. |
+| `MENAGERIE_SESSION_COOKIE_SAMESITE` | `Lax` | Session cookie SameSite policy. |
+| `MENAGERIE_PROXY_FIX` | `1` | Trust one layer of `X-Forwarded-*` proxy headers. |
+| `MENAGERIE_ALLOW_INSECURE_DEFAULTS` | unset | Set to `1` only for throwaway local development. |
 
 Change the default admin password immediately after first deployment by creating a new admin user and retiring the bootstrap credentials.

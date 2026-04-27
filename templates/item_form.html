@@ -4,6 +4,7 @@
   <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
 </div>
 <form method="post" enctype="multipart/form-data" class="panel stack">
+  {{ csrf_field()|safe }}
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
   {% for field in fields %}

@@ -165,7 +165,7 @@
       }));
       const response = await fetch("{{ url_for('save_gallery_layout') }}", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}" },
         body: JSON.stringify(updates),
       });
       saveButton.textContent = response.ok ? "Saved" : "Could not save";

@@ -12,12 +12,14 @@
   </div>
   <div class="stack">
     <form method="post" class="panel stack">
+      {{ csrf_field()|safe }}
       <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
       <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
       <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
       <p class="meta" id="crop-status">Saved automatically</p>
     </form>
     <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="panel stack">
+      {{ csrf_field()|safe }}
       <button class="danger" type="submit">Delete image</button>
     </form>
   </div>
@@ -46,7 +48,7 @@
     cropStatus.textContent = "Saving...";
     const response = await fetch(cropForm.action || window.location.href, {
       method: "POST",
-      headers: { "X-Requested-With": "fetch" },
+      headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
       body: new FormData(cropForm),
     });
     cropStatus.textContent = response.ok ? "Saved automatically" : "Could not save";
