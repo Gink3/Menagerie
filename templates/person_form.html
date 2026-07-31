@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><h1>{{ "Edit house member" if person else "Add house member" }}</h1></div>
+<form method="post" class="panel stack">{{ csrf_field()|safe }}
+  <label>Member name<input name="name" value="{{ person.name if person else '' }}" required></label>
+  <div class="field-row"><label>Birth date<input name="birth_date" value="{{ person.birth_date if person else '' }}"></label><label>Death date<input name="death_date" value="{{ person.death_date if person else '' }}"></label></div>
+  {% if not person %}<label>House or houses<select name="house_ids" multiple size="5">{% for house in houses %}<option value="{{ house.id }}">{{ house.name }}</option>{% endfor %}</select></label><label>House role<input name="house_role" placeholder="e.g. founder, knight, retainer"></label><label>Known parents<select name="parent_ids" multiple size="5">{% for candidate in people %}<option value="{{ candidate.id }}">{{ candidate.name }}</option>{% endfor %}</select></label><label>Heraldry / decal designs<select name="heraldry_ids" multiple size="5">{% for design in designs %}<option value="{{ design.id }}">{{ design.name }}</option>{% endfor %}</select></label>{% endif %}
+  <label>Miniature notes<textarea name="biography" rows="8">{{ person.biography if person else '' }}</textarea></label><button>Save member</button>
+</form>
+{% endblock %}

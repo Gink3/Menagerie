@@ -1,8 +1,12 @@
 import os
+import json
+import re
+import random
 import secrets
 import sqlite3
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
@@ -32,6 +36,17 @@ UPLOAD_DIR = DATA_DIR / "uploads"
 DATABASE = DATA_DIR / "menagerie.sqlite"
 ALLOWED_IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
 ROLES = {"admin", "collector", "viewer"}
+CAPABILITIES = {
+    "label_images": "Label images",
+    "review_annotations": "Review annotations",
+    "upload_svg": "Upload SVG assets",
+    "manage_symbols": "Manage symbols",
+    "manage_heraldry": "Manage heraldry",
+    "manage_lineage": "Manage lineage",
+    "edit_wiki": "Edit wiki pages",
+    "admin_ai": "Administer AI workflows",
+    "deploy_models": "Deploy AI models",
+}
 FIELD_TYPE_CHOICES = (
     ("text", "Single line text"),
     ("multiline", "Multi-line text"),
@@ -70,6 +85,759 @@ def close_db(error=None):
     db = g.pop("db", None)
     if db is not None:
         db.close()
+
+
+def migration_001_foundation(db):
+    db.executescript(
+        """
+        create table if not exists user_capabilities (
+            user_id integer not null references users(id) on delete cascade,
+            capability text not null,
+            enabled integer not null default 1,
+            created_at text not null default current_timestamp,
+            primary key (user_id, capability)
+        );
+
+        create table if not exists knowledge_objects (
+            id integer primary key autoincrement,
+            object_type text not null,
+            display_name text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+
+        create table if not exists knowledge_relationships (
+            id integer primary key autoincrement,
+            source_object_id integer not null references knowledge_objects(id) on delete cascade,
+            relationship_type text not null,
+            target_object_id integer not null references knowledge_objects(id) on delete cascade,
+            metadata text not null default '{}',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (source_object_id, relationship_type, target_object_id)
+        );
+
+        create table if not exists knowledge_revisions (
+            id integer primary key autoincrement,
+            object_id integer not null references knowledge_objects(id) on delete cascade,
+            revision_number integer not null,
+            snapshot text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (object_id, revision_number)
+        );
+        """
+    )
+
+
+def migration_002_symbol_atlas(db):
+    db.executescript(
+        """
+        create table if not exists symbol_categories (
+            id integer primary key autoincrement,
+            name text not null unique,
+            description text not null default '',
+            created_at text not null default current_timestamp
+        );
+
+        create table if not exists symbols (
+            id integer primary key autoincrement,
+            name text not null,
+            description text not null default '',
+            meaning text not null default '',
+            category_id integer references symbol_categories(id) on delete set null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+
+        create table if not exists symbol_versions (
+            id integer primary key autoincrement,
+            symbol_id integer not null references symbols(id) on delete cascade,
+            version_number integer not null,
+            svg_filename text not null,
+            change_summary text not null default '',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (symbol_id, version_number)
+        );
+
+        create table if not exists symbol_variants (
+            id integer primary key autoincrement,
+            symbol_id integer not null references symbols(id) on delete cascade,
+            name text not null,
+            description text not null default '',
+            svg_filename text,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+
+        create table if not exists symbol_wiki_links (
+            symbol_id integer not null references symbols(id) on delete cascade,
+            knowledge_object_id integer not null references knowledge_objects(id) on delete cascade,
+            primary key (symbol_id, knowledge_object_id)
+        );
+        """
+    )
+
+
+def migration_003_heraldry_studio(db):
+    db.executescript(
+        """
+        create table if not exists heraldry_templates (
+            id integer primary key autoincrement,
+            name text not null unique,
+            definition text not null,
+            created_at text not null default current_timestamp
+        );
+
+        create table if not exists heraldry_designs (
+            id integer primary key autoincrement,
+            knowledge_object_id integer unique references knowledge_objects(id) on delete set null,
+            name text not null,
+            template_id integer not null references heraldry_templates(id),
+            definition text not null default '{}',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+
+        create table if not exists heraldry_elements (
+            id integer primary key autoincrement,
+            design_id integer not null references heraldry_designs(id) on delete cascade,
+            symbol_id integer not null references symbols(id),
+            element_type text not null default 'symbol',
+            x real not null default 50,
+            y real not null default 50,
+            width real not null default 20,
+            height real not null default 20,
+            rotation real not null default 0,
+            mirrored integer not null default 0,
+            layer_order integer not null default 0
+        );
+
+        create table if not exists heraldry_revisions (
+            id integer primary key autoincrement,
+            design_id integer not null references heraldry_designs(id) on delete cascade,
+            revision_number integer not null,
+            snapshot text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (design_id, revision_number)
+        );
+        """
+    )
+    defaults = {
+        "Classic shield": {"viewBox": "0 0 400 500", "path": "M 20 20 H 380 V 260 C 380 390 200 480 200 480 C 200 480 20 390 20 260 Z"},
+        "Round shield": {"viewBox": "0 0 400 500", "path": "M 200 20 C 310 20 380 90 380 220 C 380 370 280 460 200 480 C 120 460 20 370 20 220 C 20 90 90 20 200 20 Z"},
+        "Banner shield": {"viewBox": "0 0 400 500", "path": "M 20 20 H 380 V 300 L 200 480 L 20 300 Z"},
+    }
+    for name, definition in defaults.items():
+        db.execute("insert or ignore into heraldry_templates (name, definition) values (?, ?)", (name, json.dumps(definition)))
+
+
+def migration_004_lineage(db):
+    db.executescript(
+        """
+        create table if not exists houses (
+            id integer primary key autoincrement,
+            name text not null unique,
+            description text not null default '',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+        create table if not exists people (
+            id integer primary key autoincrement,
+            name text not null,
+            biography text not null default '',
+            birth_date text not null default '',
+            death_date text not null default '',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+        create table if not exists titles (
+            id integer primary key autoincrement,
+            name text not null unique,
+            description text not null default ''
+        );
+        create table if not exists person_parents (
+            parent_id integer not null references people(id) on delete cascade,
+            child_id integer not null references people(id) on delete cascade,
+            primary key (parent_id, child_id),
+            check (parent_id <> child_id)
+        );
+        create table if not exists person_partners (
+            person_id integer not null references people(id) on delete cascade,
+            partner_id integer not null references people(id) on delete cascade,
+            relationship_type text not null default 'marriage',
+            primary key (person_id, partner_id),
+            check (person_id <> partner_id)
+        );
+        create table if not exists person_house_memberships (
+            person_id integer not null references people(id) on delete cascade,
+            house_id integer not null references houses(id) on delete cascade,
+            role text not null default '',
+            primary key (person_id, house_id)
+        );
+        create table if not exists person_titles (
+            person_id integer not null references people(id) on delete cascade,
+            title_id integer not null references titles(id) on delete cascade,
+            start_date text not null default '',
+            end_date text not null default '',
+            primary key (person_id, title_id)
+        );
+        create table if not exists person_heraldry (
+            person_id integer not null references people(id) on delete cascade,
+            design_id integer not null references heraldry_designs(id) on delete cascade,
+            relationship_type text not null default 'associated',
+            primary key (person_id, design_id)
+        );
+        create table if not exists heraldry_succession (
+            predecessor_id integer not null references heraldry_designs(id) on delete cascade,
+            successor_id integer not null references heraldry_designs(id) on delete cascade,
+            description text not null default '',
+            primary key (predecessor_id, successor_id),
+            check (predecessor_id <> successor_id)
+        );
+        create table if not exists person_item_links (
+            person_id integer not null references people(id) on delete cascade,
+            item_id integer not null references items(id) on delete cascade,
+            relationship_type text not null default 'associated',
+            primary key (person_id, item_id)
+        );
+        """
+    )
+
+
+def migration_005_wiki(db):
+    db.executescript(
+        """
+        create table if not exists wiki_pages (
+            id integer primary key autoincrement,
+            knowledge_object_id integer not null unique references knowledge_objects(id) on delete cascade,
+            slug text not null unique,
+            page_type text not null,
+            title text not null,
+            body text not null default '',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+        create table if not exists wiki_revisions (
+            id integer primary key autoincrement,
+            page_id integer not null references wiki_pages(id) on delete cascade,
+            revision_number integer not null,
+            title text not null,
+            body text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (page_id, revision_number)
+        );
+        create table if not exists wiki_page_categories (
+            page_id integer not null references wiki_pages(id) on delete cascade,
+            category text not null,
+            primary key (page_id, category)
+        );
+        create table if not exists wiki_page_links (
+            source_page_id integer not null references wiki_pages(id) on delete cascade,
+            target_page_id integer not null references wiki_pages(id) on delete cascade,
+            relationship_type text not null default 'related',
+            primary key (source_page_id, target_page_id, relationship_type),
+            check (source_page_id <> target_page_id)
+        );
+        """
+    )
+
+
+def migration_006_annotations(db):
+    db.executescript(
+        """
+        create table if not exists annotations (
+            id integer primary key autoincrement,
+            image_id integer not null references item_images(id) on delete cascade,
+            symbol_id integer not null references symbols(id),
+            geometry_type text not null,
+            geometry text not null,
+            status text not null default 'draft',
+            labeler_id integer references users(id),
+            reviewer_id integer references users(id),
+            created_at text not null default current_timestamp,
+            updated_at text not null default current_timestamp
+        );
+        create table if not exists annotation_revisions (
+            id integer primary key autoincrement,
+            annotation_id integer not null references annotations(id) on delete cascade,
+            revision_number integer not null,
+            geometry_type text not null,
+            geometry text not null,
+            symbol_id integer not null references symbols(id),
+            status text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (annotation_id, revision_number)
+        );
+        create table if not exists annotation_reviews (
+            id integer primary key autoincrement,
+            annotation_id integer not null references annotations(id) on delete cascade,
+            reviewer_id integer not null references users(id),
+            decision text not null,
+            note text not null default '',
+            created_at text not null default current_timestamp
+        );
+        """
+    )
+
+
+def migration_007_ai_lab(db):
+    db.executescript(
+        """
+        create table if not exists ai_classes (
+            id integer primary key autoincrement,
+            name text not null unique,
+            symbol_id integer references symbols(id) on delete set null,
+            created_at text not null default current_timestamp
+        );
+        create table if not exists ai_datasets (
+            id integer primary key autoincrement,
+            name text not null unique,
+            description text not null default '',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+        create table if not exists ai_dataset_versions (
+            id integer primary key autoincrement,
+            dataset_id integer not null references ai_datasets(id) on delete cascade,
+            version_number integer not null,
+            sample_count integer not null default 0,
+            split_seed integer not null,
+            status text not null default 'ready',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (dataset_id, version_number)
+        );
+        create table if not exists ai_dataset_samples (
+            dataset_version_id integer not null references ai_dataset_versions(id) on delete cascade,
+            annotation_id integer not null references annotations(id),
+            class_id integer not null references ai_classes(id),
+            split text not null,
+            primary key (dataset_version_id, annotation_id)
+        );
+        create table if not exists ai_training_runs (
+            id integer primary key autoincrement,
+            dataset_version_id integer not null references ai_dataset_versions(id),
+            status text not null default 'queued',
+            parameters text not null default '{}',
+            metrics text not null default '{}',
+            error_message text not null default '',
+            started_at text,
+            completed_at text,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+        create table if not exists ai_models (
+            id integer primary key autoincrement,
+            name text not null unique,
+            description text not null default '',
+            created_at text not null default current_timestamp
+        );
+        create table if not exists ai_model_versions (
+            id integer primary key autoincrement,
+            model_id integer not null references ai_models(id) on delete cascade,
+            version_number integer not null,
+            training_run_id integer references ai_training_runs(id),
+            artifact_filename text,
+            metrics text not null default '{}',
+            created_by integer references users(id),
+            created_at text not null default current_timestamp,
+            unique (model_id, version_number)
+        );
+        create table if not exists ai_deployments (
+            id integer primary key autoincrement,
+            model_version_id integer not null references ai_model_versions(id),
+            status text not null default 'active',
+            deployed_by integer references users(id),
+            deployed_at text not null default current_timestamp
+        );
+        create table if not exists ai_suggestions (
+            id integer primary key autoincrement,
+            image_id integer not null references item_images(id) on delete cascade,
+            model_version_id integer references ai_model_versions(id),
+            symbol_id integer references symbols(id),
+            geometry_type text not null,
+            geometry text not null,
+            confidence real not null default 0,
+            status text not null default 'pending',
+            reviewed_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+        """
+    )
+
+
+def migration_008_metrics(db):
+    db.executescript(
+        """
+        create table if not exists activity_events (
+            id integer primary key autoincrement,
+            user_id integer references users(id) on delete set null,
+            event_type text not null,
+            object_type text not null default '',
+            object_id integer,
+            metadata text not null default '{}',
+            created_at text not null default current_timestamp
+        );
+        create table if not exists audit_events (
+            id integer primary key autoincrement,
+            user_id integer references users(id) on delete set null,
+            action text not null,
+            object_type text not null default '',
+            object_id integer,
+            details text not null default '{}',
+            created_at text not null default current_timestamp
+        );
+        create index if not exists activity_events_type_created on activity_events(event_type, created_at);
+        create index if not exists audit_events_action_created on audit_events(action, created_at);
+        """
+    )
+
+
+def migration_009_designer_and_lineage_ownership(db):
+    """Keep personal miniature lineages private while making design assets reusable."""
+    for table in ("houses", "people"):
+        columns = {row["name"] for row in db.execute(f"pragma table_info({table})")}
+        if "owner_id" not in columns:
+            db.execute(f"alter table {table} add column owner_id integer references users(id)")
+            first_user = db.execute("select id from users order by id limit 1").fetchone()
+            if first_user:
+                db.execute(f"update {table} set owner_id = ? where owner_id is null", (first_user["id"],))
+    db.executescript("""
+        create index if not exists houses_owner_name on houses(owner_id, name);
+        create index if not exists people_owner_name on people(owner_id, name);
+    """)
+
+
+def migration_010_default_decal(db):
+    """Seed a shared outline decal so every installation has an editor example."""
+    if db.execute("select 1 from heraldry_designs where name = 'Donut decal'").fetchone():
+        return
+    template = db.execute("select id from heraldry_templates order by id limit 1").fetchone()
+    if template is None:
+        return
+    markup = (ASSET_DIR / "default_decals" / "donut.svg").read_text(encoding="utf-8")
+    definition = json.dumps({"fields": {"division": "plain", "primary": "#ffffff", "secondary": "#000000"}, "elements": [], "svg_markup": sanitize_svg(markup)})
+    cursor = db.execute("insert into knowledge_objects (object_type, display_name) values ('heraldry', 'Donut decal')")
+    db.execute("insert into heraldry_designs (knowledge_object_id, name, template_id, definition) values (?, 'Donut decal', ?, ?)", (cursor.lastrowid, template["id"], definition))
+
+
+def migration_011_refresh_default_decal(db):
+    """Refresh the seeded example for installations that received its first draft."""
+    markup = (ASSET_DIR / "default_decals" / "donut.svg").read_text(encoding="utf-8")
+    definition = json.dumps({"fields": {"division": "plain", "primary": "#ffffff", "secondary": "#000000"}, "elements": [], "svg_markup": sanitize_svg(markup)})
+    db.execute("update heraldry_designs set definition = ?, updated_at = current_timestamp where name = 'Donut decal' and created_by is null", (definition,))
+
+
+def migration_012_decal_templates(db):
+    db.executescript("""
+        create table if not exists decal_templates (
+            id integer primary key autoincrement,
+            name text not null unique,
+            svg_markup text not null,
+            created_by integer references users(id),
+            created_at text not null default current_timestamp
+        );
+    """)
+    markup = sanitize_svg((ASSET_DIR / "default_decals" / "donut.svg").read_text(encoding="utf-8"))
+    db.execute("insert or ignore into decal_templates (name, svg_markup) values ('Donut decal', ?)", (markup,))
+
+
+MIGRATIONS = (
+    (1, "foundation", migration_001_foundation),
+    (2, "symbol_atlas", migration_002_symbol_atlas),
+    (3, "heraldry_studio", migration_003_heraldry_studio),
+    (4, "lineage", migration_004_lineage),
+    (5, "wiki", migration_005_wiki),
+    (6, "annotations", migration_006_annotations),
+    (7, "ai_lab", migration_007_ai_lab),
+    (8, "metrics", migration_008_metrics),
+    (9, "designer_and_lineage_ownership", migration_009_designer_and_lineage_ownership),
+    (10, "default_decal", migration_010_default_decal),
+    (11, "refresh_default_decal", migration_011_refresh_default_decal),
+    (12, "decal_templates", migration_012_decal_templates),
+)
+
+
+def run_migrations(db):
+    db.execute(
+        "create table if not exists schema_migrations (version integer primary key, name text not null, applied_at text not null default current_timestamp)"
+    )
+    applied = {row["version"] for row in db.execute("select version from schema_migrations")}
+    for version, name, migration in MIGRATIONS:
+        if version in applied:
+            continue
+        migration(db)
+        db.execute("insert into schema_migrations (version, name) values (?, ?)", (version, name))
+
+
+def create_knowledge_object(object_type, display_name, created_by=None):
+    db = get_db()
+    cursor = db.execute(
+        "insert into knowledge_objects (object_type, display_name, created_by) values (?, ?, ?)",
+        (object_type, display_name, created_by),
+    )
+    db.commit()
+    return cursor.lastrowid
+
+
+def add_knowledge_relationship(source_object_id, relationship_type, target_object_id, metadata="{}", created_by=None):
+    db = get_db()
+    cursor = db.execute(
+        """
+        insert into knowledge_relationships
+            (source_object_id, relationship_type, target_object_id, metadata, created_by)
+        values (?, ?, ?, ?, ?)
+        on conflict(source_object_id, relationship_type, target_object_id)
+        do update set metadata = excluded.metadata
+        """,
+        (source_object_id, relationship_type, target_object_id, metadata, created_by),
+    )
+    db.commit()
+    return cursor.lastrowid
+
+
+def has_capability(user, capability):
+    if user is None or capability not in CAPABILITIES:
+        return False
+    if user["role"] == "admin":
+        return True
+    return (
+        get_db()
+        .execute(
+            "select 1 from user_capabilities where user_id = ? and capability = ? and enabled = 1",
+            (user["id"], capability),
+        )
+        .fetchone()
+        is not None
+    )
+
+
+def capability_required(capability):
+    def decorator(view):
+        @wraps(view)
+        def wrapped_view(**kwargs):
+            if g.user is None:
+                return redirect(url_for("login", next=request.path))
+            if not has_capability(g.user, capability):
+                abort(403)
+            return view(**kwargs)
+
+        return wrapped_view
+
+    return decorator
+
+
+def sanitize_svg(raw_svg):
+    if not raw_svg:
+        raise ValueError("The uploaded file is empty.")
+    if "<!doctype" in raw_svg.lower() or "<!entity" in raw_svg.lower():
+        raise ValueError("SVG contains a prohibited DOCTYPE or entity declaration.")
+    try:
+        root = ET.fromstring(raw_svg)
+    except ET.ParseError as error:
+        raise ValueError(f"SVG XML could not be parsed ({error}).") from error
+    root_tag = root.tag.rsplit("}", 1)[-1] if isinstance(root.tag, str) else ""
+    if root_tag != "svg":
+        raise ValueError("The uploaded XML document is not an SVG (its root element must be <svg>).")
+    allowed_tags = {"svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "title", "desc", "defs", "linearGradient", "radialGradient", "stop", "use"}
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1] if isinstance(element.tag, str) else ""
+        if tag not in allowed_tags:
+            raise ValueError("SVG contains an unsupported element.")
+        for attribute, value in element.attrib.items():
+            name = attribute.rsplit("}", 1)[-1].lower()
+            if name.startswith("on") or name in {"href", "xlink:href"} and not value.startswith("#"):
+                raise ValueError("SVG contains an unsafe attribute.")
+            if "javascript:" in value.lower() or "data:" in value.lower():
+                raise ValueError("SVG contains an unsafe URL.")
+    # Preserve the normal SVG namespace. Without this, ElementTree emits an
+    # ns0: prefix which browsers can re-serialize into an invalid editor SVG.
+    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    return ET.tostring(root, encoding="unicode")
+
+
+def valid_json_object(raw, message):
+    try:
+        value = json.loads(raw or "{}")
+    except json.JSONDecodeError as error:
+        raise ValueError(message) from error
+    if not isinstance(value, dict):
+        raise ValueError(message)
+    return json.dumps(value)
+
+
+def save_symbol_svg(raw_svg):
+    sanitized = sanitize_svg(raw_svg)
+    symbol_dir = UPLOAD_DIR / "symbols"
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid.uuid4().hex}.svg"
+    (symbol_dir / filename).write_text(sanitized, encoding="utf-8")
+    return f"symbols/{filename}"
+
+
+def get_symbol(symbol_id):
+    symbol = get_db().execute(
+        """
+        select symbols.*, symbol_categories.name as category_name,
+               users.username as creator_name
+        from symbols
+        left join symbol_categories on symbol_categories.id = symbols.category_id
+        left join users on users.id = symbols.created_by
+        where symbols.id = ?
+        """,
+        (symbol_id,),
+    ).fetchone()
+    if symbol is None:
+        abort(404)
+    return symbol
+
+
+def heraldry_definition(raw):
+    try:
+        value = json.loads(raw or "{}")
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid heraldry design data.") from error
+    fields = value.get("fields", {})
+    if not isinstance(fields, dict) or not isinstance(value.get("elements", []), list):
+        raise ValueError("Invalid heraldry design structure.")
+    try:
+        division = fields.get("division", "plain")
+        if division not in {"plain", "per-pale", "per-fess", "quarterly"}:
+            raise ValueError
+        primary = str(fields.get("primary", "#ffffff"))
+        secondary = str(fields.get("secondary", "#6b3080"))
+        if not primary.startswith("#") or not secondary.startswith("#"):
+            raise ValueError
+        elements = []
+        for element in value["elements"]:
+            elements.append({
+                "symbol_id": int(element["symbol_id"]),
+                "x": max(0, min(100, float(element.get("x", 50)))),
+                "y": max(0, min(100, float(element.get("y", 50)))),
+                "width": max(1, min(100, float(element.get("width", 20)))),
+                "height": max(1, min(100, float(element.get("height", 20)))),
+                "rotation": float(element.get("rotation", 0)) % 360,
+                "mirrored": bool(element.get("mirrored", False)),
+                "layer_order": int(element.get("layer_order", 0)),
+            })
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f"Invalid decal field or element data: {error}") from error
+    svg_markup = value.get("svg_markup", "")
+    if svg_markup:
+        try:
+            svg_markup = sanitize_svg(svg_markup)
+        except ValueError as error:
+            raise ValueError(f"The edited SVG is invalid: {error}") from error
+    source_template_id = value.get("source_template_id")
+    try:
+        source_template_id = int(source_template_id) if source_template_id is not None else None
+    except (TypeError, ValueError) as error:
+        raise ValueError("The source template reference is invalid.") from error
+    return {"fields": {"division": division, "primary": primary, "secondary": secondary}, "elements": elements, "svg_markup": svg_markup, "source_template_id": source_template_id}
+
+
+def heraldry_svg(design, template, elements):
+    # Uploaded outlines retain their individual SVG areas. The editor marks each
+    # selectable shape with data-fill and stores its chosen fill in the markup.
+    if design.get("svg_markup"):
+        return design["svg_markup"]
+    if design.get("source_template_id"):
+        source = get_db().execute("select svg_markup from decal_templates where id = ?", (design["source_template_id"],)).fetchone()
+        if source:
+            return source["svg_markup"]
+    fields = design["fields"]
+    template_definition = template["template_definition"] if "template_definition" in template.keys() else template["definition"]
+    path = json.loads(template_definition)["path"]
+    primary = fields["primary"]
+    secondary = fields["secondary"]
+    division = fields["division"]
+    if division == "per-pale":
+        field = f'<path d="{path}" fill="{primary}"/><path d="M 200 20 H 380 V 260 C 380 390 200 480 200 480 C 200 480 200 390 200 260 Z" fill="{secondary}"/>'
+    elif division == "per-fess":
+        field = f'<path d="{path}" fill="{primary}"/><path d="M 20 250 H 380 V 260 C 380 390 200 480 200 480 C 200 480 20 390 20 260 Z" fill="{secondary}"/>'
+    elif division == "quarterly":
+        field = f'<path d="{path}" fill="{primary}"/><path d="M 200 20 V 480 L 380 260 V 20 Z" fill="{secondary}"/>'
+    else:
+        field = f'<path d="{path}" fill="{primary}"/>'
+    markup = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 500"><defs><clipPath id="shield-clip"><path d="{path}"/></clipPath></defs><g clip-path="url(#shield-clip)">{field}']
+    for element in sorted(elements, key=lambda item: item["layer_order"]):
+        symbol = get_db().execute("select * from symbols where id = ?", (element["symbol_id"],)).fetchone()
+        version = get_db().execute("select svg_filename from symbol_versions where symbol_id = ? order by version_number desc limit 1", (element["symbol_id"],)).fetchone()
+        if not symbol or not version:
+            continue
+        raw = (UPLOAD_DIR / version["svg_filename"]).read_text(encoding="utf-8")
+        inner = raw[raw.find(">") + 1:raw.rfind("</svg>")]
+        sx = -1 if element["mirrored"] else 1
+        transform = f'translate({element["x"] * 4 - element["width"] * 2} {element["y"] * 5 - element["height"] * 2}) rotate({element["rotation"]} {element["width"] * 2} {element["height"] * 2}) scale({sx * element["width"] / 100} {element["height"] / 100})'
+        markup.append(f'<g transform="{transform}">{inner}</g>')
+    markup.append("</g></svg>")
+    return "".join(markup)
+
+
+def save_heraldry_svg(raw_svg):
+    sanitized = sanitize_svg(raw_svg)
+    return sanitized
+
+
+def black_outline_svg(raw_svg):
+    root = ET.fromstring(raw_svg)
+    fillable_tags = {"path", "rect", "circle", "ellipse", "polygon", "polyline"}
+    for element in root.iter():
+        tag = element.tag.rsplit("}", 1)[-1] if isinstance(element.tag, str) else ""
+        if tag in fillable_tags:
+            element.set("fill", "none")
+            element.set("stroke", "#000000")
+            if not element.get("stroke-width"):
+                element.set("stroke-width", "2")
+    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    return ET.tostring(root, encoding="unicode")
+
+
+def decode_svg_upload(raw_bytes):
+    """Accept the UTF-8 and UTF-16 encodings commonly emitted by SVG editors."""
+    for encoding in ("utf-8-sig", "utf-16", "utf-16-le", "utf-16-be"):
+        try:
+            text = raw_bytes.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+        if "<svg" in text.lower():
+            return text
+    raise ValueError("The file is not UTF-8 or UTF-16 SVG text, or it does not contain an <svg> element.")
+
+
+def unique_decal_template_name(name):
+    db = get_db()
+    candidate = name
+    suffix = 2
+    while db.execute("select 1 from decal_templates where name = ?", (candidate,)).fetchone():
+        candidate = f"{name} ({suffix})"
+        suffix += 1
+    return candidate
+
+
+def user_lineage_rows(table):
+    return get_db().execute(f"select * from {table} where owner_id = ? order by name", (g.user["id"],)).fetchall()
+
+
+def ensure_lineage_wiki(page_type, title, owner_id):
+    db = get_db()
+    page = db.execute("select id from wiki_pages where page_type = ? and title = ? and created_by = ?", (page_type, title, owner_id)).fetchone()
+    if page:
+        return
+    knowledge_id = create_knowledge_object(f"wiki_{page_type}", title, owner_id)
+    slug = unique_wiki_slug(f"{title}-{page_type}-{owner_id}")
+    cursor = db.execute("insert into wiki_pages (knowledge_object_id, slug, page_type, title, body, created_by) values (?, ?, ?, ?, ?, ?)", (knowledge_id, slug, page_type, title, f"{page_type.title()} record for {title}.", owner_id))
+    db.execute("insert into wiki_revisions (page_id, revision_number, title, body, created_by) values (?, 1, ?, ?, ?)", (cursor.lastrowid, title, f"{page_type.title()} record for {title}.", owner_id))
 
 
 def init_db():
@@ -211,6 +979,7 @@ def init_db():
     first_admin = db.execute("select id from users where role = 'admin' order by id limit 1").fetchone()
     if first_admin:
         db.execute("update collections set owner_id = ? where owner_id is null", (first_admin["id"],))
+    run_migrations(db)
     layout_seeded = db.execute("select value from settings where key = 'gallery_layout_seeded'").fetchone()
     if layout_seeded is None:
         owner_positions = {}
@@ -278,9 +1047,17 @@ def add_security_headers(response):
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
     if request.is_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
+
+
+@app.errorhandler(413)
+def request_entity_too_large(error):
+    flash("The uploaded file is too large.", "error")
+    return render_template("login.html" if g.user is None else "index.html"), 413
 
 
 def login_required(view):
@@ -323,7 +1100,7 @@ def valid_csrf_token(token):
 
 @app.context_processor
 def inject_security_helpers():
-    return {"csrf_token": csrf_token, "csrf_field": csrf_field}
+    return {"csrf_token": csrf_token, "csrf_field": csrf_field, "has_capability": has_capability}
 
 
 def csrf_field():
@@ -509,7 +1286,7 @@ def gallery_images(owner_id=None, mixed=False):
         params.append(owner_id)
     order = "users.username, items.gallery_y, items.gallery_x, item_images.gallery_position, item_images.position, item_images.id"
     if mixed:
-        order = "items.updated_at desc, item_images.gallery_position, item_images.position, item_images.id"
+        order = "random()"
     rows = get_db().execute(
         f"""
         select item_images.*, items.id as item_id, items.name as item_name,
@@ -547,6 +1324,14 @@ def gallery_images(owner_id=None, mixed=False):
             item_lookup[item_id] = item
             gallery_items.append(item)
         item_lookup[item_id]["images"].append(row)
+    if mixed:
+        # The public gallery is a fresh mixed exhibition on every visit; personal
+        # gallery layouts remain saved and editable.
+        for item in gallery_items:
+            item["gallery_w"] = random.choice((1, 1, 2, 2, 3))
+            item["gallery_h"] = random.choice((1, 1, 2, 2, 3))
+            item["gallery_x"] = random.randint(0, 6 - item["gallery_w"])
+            item["gallery_y"] = random.randint(0, max(1, len(gallery_items) // 2))
     return normalize_gallery_layout(gallery_items)
 
 
@@ -809,6 +1594,8 @@ def login():
         if user and check_password_hash(user["password_hash"], password):
             session.clear()
             session["user_id"] = user["id"]
+            record_activity("login", user_id=user["id"])
+            get_db().commit()
             return redirect(local_redirect_target(request.args.get("next"), url_for("collections_index")))
         flash("Invalid username or password.", "error")
     return render_template("login.html")
@@ -1391,9 +2178,901 @@ def uploaded_file(filename):
     return send_from_directory(UPLOAD_DIR, filename)
 
 
+@app.route("/symbol-files/<path:filename>")
+@login_required
+def symbol_file(filename):
+    if not filename.startswith("symbols/"):
+        abort(404)
+    return send_from_directory(UPLOAD_DIR, filename)
+
+
 @app.route("/assets/<path:filename>")
 def asset_file(filename):
     return send_from_directory(ASSET_DIR, filename)
+
+
+@app.route("/symbols")
+@login_required
+def symbols_index():
+    db = get_db()
+    symbols = db.execute(
+        "select symbols.*, symbol_categories.name as category_name from symbols left join symbol_categories on symbol_categories.id = symbols.category_id order by symbols.name"
+    ).fetchall()
+    return render_template("symbols.html", symbols=symbols)
+
+
+@app.route("/symbols/new", methods=("GET", "POST"))
+@capability_required("manage_symbols")
+def new_symbol():
+    db = get_db()
+    categories = db.execute("select * from symbol_categories order by name").fetchall()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        raw_svg = request.form.get("svg", "").strip()
+        if not name or not raw_svg:
+            flash("Name and SVG are required.", "error")
+        else:
+            try:
+                filename = save_symbol_svg(raw_svg)
+            except ValueError as error:
+                flash(str(error), "error")
+            else:
+                category_id = request.form.get("category_id") or None
+                cursor = db.execute(
+                    "insert into symbols (name, description, meaning, category_id, created_by) values (?, ?, ?, ?, ?)",
+                    (name, request.form.get("description", "").strip(), request.form.get("meaning", "").strip(), category_id, g.user["id"]),
+                )
+                symbol_id = cursor.lastrowid
+                db.execute(
+                    "insert into symbol_versions (symbol_id, version_number, svg_filename, change_summary, created_by) values (?, 1, ?, ?, ?)",
+                    (symbol_id, filename, "Initial version", g.user["id"]),
+                )
+                db.commit()
+                flash("Symbol created.", "success")
+                return redirect(url_for("symbol_detail", symbol_id=symbol_id))
+    return render_template("symbol_form.html", symbol=None, categories=categories)
+
+
+@app.route("/symbols/<int:symbol_id>")
+@login_required
+def symbol_detail(symbol_id):
+    symbol = get_symbol(symbol_id)
+    db = get_db()
+    versions = db.execute("select * from symbol_versions where symbol_id = ? order by version_number desc", (symbol_id,)).fetchall()
+    variants = db.execute("select * from symbol_variants where symbol_id = ? order by name", (symbol_id,)).fetchall()
+    return render_template("symbol_detail.html", symbol=symbol, versions=versions, variants=variants)
+
+
+@app.route("/symbols/<int:symbol_id>/edit", methods=("GET", "POST"))
+@capability_required("manage_symbols")
+def edit_symbol(symbol_id):
+    symbol = get_symbol(symbol_id)
+    db = get_db()
+    categories = db.execute("select * from symbol_categories order by name").fetchall()
+    if request.method == "POST":
+        db.execute(
+            "update symbols set name = ?, description = ?, meaning = ?, category_id = ?, updated_at = current_timestamp where id = ?",
+            (request.form.get("name", "").strip(), request.form.get("description", "").strip(), request.form.get("meaning", "").strip(), request.form.get("category_id") or None, symbol_id),
+        )
+        raw_svg = request.form.get("svg", "").strip()
+        if raw_svg:
+            try:
+                filename = save_symbol_svg(raw_svg)
+            except ValueError as error:
+                flash(str(error), "error")
+                return render_template("symbol_form.html", symbol=symbol, categories=categories)
+            version = db.execute("select coalesce(max(version_number), 0) + 1 from symbol_versions where symbol_id = ?", (symbol_id,)).fetchone()[0]
+            db.execute(
+                "insert into symbol_versions (symbol_id, version_number, svg_filename, change_summary, created_by) values (?, ?, ?, ?, ?)",
+                (symbol_id, version, filename, request.form.get("change_summary", "").strip(), g.user["id"]),
+            )
+        db.commit()
+        flash("Symbol saved.", "success")
+        return redirect(url_for("symbol_detail", symbol_id=symbol_id))
+    return render_template("symbol_form.html", symbol=symbol, categories=categories)
+
+
+@app.route("/symbols/<int:symbol_id>/variants", methods=("POST",))
+@capability_required("manage_symbols")
+def add_symbol_variant(symbol_id):
+    get_symbol(symbol_id)
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Variant name is required.", "error")
+        return redirect(url_for("symbol_detail", symbol_id=symbol_id))
+    filename = None
+    raw_svg = request.form.get("svg", "").strip()
+    if raw_svg:
+        try:
+            filename = save_symbol_svg(raw_svg)
+        except ValueError as error:
+            flash(str(error), "error")
+            return redirect(url_for("symbol_detail", symbol_id=symbol_id))
+    db = get_db()
+    db.execute(
+        "insert into symbol_variants (symbol_id, name, description, svg_filename, created_by) values (?, ?, ?, ?, ?)",
+        (symbol_id, name, request.form.get("description", "").strip(), filename, g.user["id"]),
+    )
+    db.commit()
+    flash("Symbol variant added.", "success")
+    return redirect(url_for("symbol_detail", symbol_id=symbol_id))
+
+
+@app.route("/heraldry")
+@login_required
+def heraldry_index():
+    designs = []
+    for row in get_db().execute("select heraldry_designs.*, heraldry_templates.name as template_name, heraldry_templates.definition as template_definition from heraldry_designs join heraldry_templates on heraldry_templates.id = heraldry_designs.template_id where heraldry_designs.created_by = ? order by heraldry_designs.name", (g.user["id"],)).fetchall():
+        definition = json.loads(row["definition"])
+        designs.append({"id": row["id"], "name": row["name"], "template_name": row["template_name"], "updated_at": row["updated_at"], "svg": heraldry_svg(definition, row, definition.get("elements", []))})
+    return render_template("heraldry.html", designs=designs)
+
+
+@app.route("/heraldry/new", methods=("GET", "POST"))
+@capability_required("manage_heraldry")
+def new_heraldry():
+    db = get_db()
+    designs = []
+    for row in db.execute("select heraldry_designs.*, heraldry_templates.definition as template_definition from heraldry_designs join heraldry_templates on heraldry_templates.id = heraldry_designs.template_id where heraldry_designs.created_by = ? order by heraldry_designs.name", (g.user["id"],)).fetchall():
+        definition = json.loads(row["definition"])
+        designs.append({"id": row["id"], "name": row["name"], "svg": heraldry_svg(definition, row, definition.get("elements", []))})
+    templates = db.execute("select * from decal_templates order by name").fetchall()
+    return render_template("heraldry_form.html", design=None, designs=designs, templates=templates, initial_definition={"fields": {"primary": "#ffffff"}, "elements": [], "svg_markup": ""})
+
+
+@app.route("/heraldry/upload", methods=("POST",))
+@capability_required("manage_heraldry")
+def upload_heraldry_outline():
+    upload = request.files.get("svg_file")
+    if not upload or not upload.filename.lower().endswith(".svg"):
+        flash("Choose an SVG outline to upload.", "error")
+        return redirect(url_for("new_heraldry"))
+    try:
+        markup = black_outline_svg(save_heraldry_svg(decode_svg_upload(upload.read())))
+    except ValueError as error:
+        flash(f"Could not import {upload.filename}: {error}", "error")
+        return redirect(url_for("new_heraldry"))
+    db = get_db()
+    default_name = Path(upload.filename).stem or "Uploaded outline"
+    name = request.form.get("name", "").strip() or default_name
+    template_name = unique_decal_template_name(name)
+    db.execute("insert into decal_templates (name, svg_markup, created_by) values (?, ?, ?)", (template_name, markup, g.user["id"]))
+    template_id = db.execute("select id from decal_templates where name = ?", (template_name,)).fetchone()["id"]
+    db.commit()
+    flash(f"Template '{template_name}' added to the template library.", "success")
+    if request.form.get("next") == "build":
+        return redirect(url_for("create_decal_from_template", template_id=template_id))
+    return redirect(url_for("decal_templates_index"))
+
+
+@app.route("/decal-templates/new")
+@capability_required("manage_heraldry")
+def new_decal_template():
+    return render_template("decal_template_form.html")
+
+
+@app.route("/decal-templates")
+@login_required
+def decal_templates_index():
+    templates = get_db().execute("select * from decal_templates order by name").fetchall()
+    return render_template("decal_templates.html", templates=templates)
+
+
+@app.route("/decal-templates/<int:template_id>/delete", methods=("POST",))
+@capability_required("manage_heraldry")
+def delete_decal_template(template_id):
+    db = get_db()
+    template = db.execute("select * from decal_templates where id = ?", (template_id,)).fetchone()
+    if template is None:
+        abort(404)
+    db.execute("delete from decal_templates where id = ?", (template_id,))
+    db.commit()
+    flash(f"Template '{template['name']}' deleted. Existing decals created from it are unchanged.", "success")
+    return redirect(url_for("decal_templates_index"))
+
+
+@app.route("/decal-templates/delete-selected", methods=("POST",))
+@capability_required("manage_heraldry")
+def delete_selected_decal_templates():
+    try:
+        template_ids = {int(value) for value in request.form.getlist("template_ids")}
+    except ValueError:
+        abort(400)
+    if template_ids:
+        placeholders = ",".join("?" for _ in template_ids)
+        get_db().execute(f"delete from decal_templates where id in ({placeholders})", tuple(template_ids))
+        get_db().commit()
+        flash(f"Deleted {len(template_ids)} template(s). Existing decals are unchanged.", "success")
+    return redirect(url_for("decal_templates_index"))
+
+
+@app.route("/decal-templates/<int:template_id>/create", methods=("GET", "POST"))
+@capability_required("manage_heraldry")
+def create_decal_from_template(template_id):
+    db = get_db()
+    source = db.execute("select * from decal_templates where id = ?", (template_id,)).fetchone()
+    if source is None:
+        abort(404)
+    if request.method == "GET":
+        return render_template("decal_from_template.html", template=source)
+    shield = db.execute("select id from heraldry_templates order by id limit 1").fetchone()
+    name = request.form.get("name", "").strip() or f"{source['name']} decal"
+    definition = {"fields": {"division": "plain", "primary": "#ffffff", "secondary": "#000000"}, "elements": [], "svg_markup": source["svg_markup"], "source_template_id": source["id"]}
+    knowledge_id = create_knowledge_object("heraldry", name, g.user["id"])
+    cursor = db.execute("insert into heraldry_designs (knowledge_object_id, name, template_id, definition, created_by) values (?, ?, ?, ?, ?)", (knowledge_id, name, shield["id"], json.dumps(definition), g.user["id"]))
+    db.execute("insert into heraldry_revisions (design_id, revision_number, snapshot, created_by) values (?, 1, ?, ?)", (cursor.lastrowid, json.dumps(definition), g.user["id"]))
+    db.commit()
+    return redirect(url_for("edit_heraldry", design_id=cursor.lastrowid))
+
+
+def get_heraldry(design_id):
+    design = get_db().execute("select heraldry_designs.*, heraldry_templates.name as template_name, heraldry_templates.definition as template_definition from heraldry_designs join heraldry_templates on heraldry_templates.id = heraldry_designs.template_id where heraldry_designs.id = ?", (design_id,)).fetchone()
+    if design is None:
+        abort(404)
+    return design
+
+
+@app.route("/heraldry/<int:design_id>/copy", methods=("POST",))
+@capability_required("manage_heraldry")
+def copy_heraldry(design_id):
+    source = get_heraldry(design_id)
+    if source["created_by"] != g.user["id"]:
+        abort(404)
+    db = get_db()
+    name = (request.form.get("name") or f"Copy of {source['name']}").strip()
+    knowledge_id = create_knowledge_object("heraldry", name, g.user["id"])
+    cursor = db.execute("insert into heraldry_designs (knowledge_object_id, name, template_id, definition, created_by) values (?, ?, ?, ?, ?)", (knowledge_id, name, source["template_id"], source["definition"], g.user["id"]))
+    db.execute("insert into heraldry_revisions (design_id, revision_number, snapshot, created_by) values (?, 1, ?, ?)", (cursor.lastrowid, source["definition"], g.user["id"]))
+    db.commit()
+    return redirect(url_for("edit_heraldry", design_id=cursor.lastrowid))
+
+
+@app.route("/heraldry/<int:design_id>/delete", methods=("POST",))
+@capability_required("manage_heraldry")
+def delete_heraldry(design_id):
+    design = get_heraldry(design_id)
+    db = get_db()
+    db.execute("delete from heraldry_designs where id = ?", (design_id,))
+    db.commit()
+    flash(f"Decal '{design['name']}' deleted. Its source SVG template remains in the library.", "success")
+    return redirect(url_for("heraldry_index"))
+
+
+@app.route("/heraldry/delete-selected", methods=("POST",))
+@capability_required("manage_heraldry")
+def delete_selected_heraldry():
+    try:
+        design_ids = {int(value) for value in request.form.getlist("design_ids")}
+    except ValueError:
+        abort(400)
+    if design_ids:
+        placeholders = ",".join("?" for _ in design_ids)
+        get_db().execute(f"delete from heraldry_designs where id in ({placeholders}) and created_by = ?", (*design_ids, g.user["id"]))
+        get_db().commit()
+        flash(f"Deleted {len(design_ids)} decal(s).", "success")
+    return redirect(url_for("heraldry_index"))
+
+
+@app.route("/heraldry/<int:design_id>")
+@login_required
+def heraldry_detail(design_id):
+    design = get_heraldry(design_id)
+    definition = json.loads(design["definition"])
+    svg = heraldry_svg(definition, design, definition["elements"])
+    revisions = get_db().execute("select * from heraldry_revisions where design_id = ? order by revision_number desc", (design_id,)).fetchall()
+    return render_template("heraldry_detail.html", design=design, definition=definition, svg=svg, revisions=revisions)
+
+
+@app.route("/heraldry/<int:design_id>/edit", methods=("GET", "POST"))
+@capability_required("manage_heraldry")
+def edit_heraldry(design_id):
+    design = get_heraldry(design_id)
+    db = get_db()
+    if request.method == "POST":
+        try:
+            definition = heraldry_definition(request.form.get("definition"))
+        except (KeyError, ValueError) as error:
+            flash(str(error), "error")
+        else:
+            revision = db.execute("select coalesce(max(revision_number), 0) + 1 from heraldry_revisions where design_id = ?", (design_id,)).fetchone()[0]
+            db.execute("update heraldry_designs set name = ?, definition = ?, updated_at = current_timestamp where id = ?", (request.form.get("name", "").strip(), json.dumps(definition), design_id))
+            db.execute("insert into heraldry_revisions (design_id, revision_number, snapshot, created_by) values (?, ?, ?, ?)", (design_id, revision, json.dumps(definition), g.user["id"]))
+            db.commit()
+            flash("Heraldry design saved.", "success")
+            return redirect(url_for("heraldry_detail", design_id=design_id))
+    initial_definition = json.loads(design["definition"])
+    if not initial_definition.get("svg_markup"):
+        initial_definition["svg_markup"] = heraldry_svg(initial_definition, design, initial_definition.get("elements", []))
+    return render_template("heraldry_form.html", design=design, designs=[], initial_definition=initial_definition, editor_svg=heraldry_svg(initial_definition, design, initial_definition.get("elements", [])), is_new_upload=request.args.get("new_upload") == "1")
+
+
+@app.route("/heraldry/<int:design_id>/export.svg")
+@login_required
+def export_heraldry_svg(design_id):
+    design = get_heraldry(design_id)
+    definition = json.loads(design["definition"])
+    response = app.response_class(heraldry_svg(definition, design, definition["elements"]), mimetype="image/svg+xml")
+    response.headers["Content-Disposition"] = f'attachment; filename="heraldry-{design_id}.svg"'
+    return response
+
+
+def get_person(person_id):
+    person = get_db().execute("select * from people where id = ?", (person_id,)).fetchone()
+    if person is None:
+        abort(404)
+    return person
+
+
+def would_create_parent_cycle(parent_id, child_id):
+    return get_db().execute(
+        """with recursive descendants(id) as (
+             select child_id from person_parents where parent_id = ?
+             union all select person_parents.child_id from person_parents join descendants on person_parents.parent_id = descendants.id
+           ) select 1 from descendants where id = ?""",
+        (child_id, parent_id),
+    ).fetchone() is not None
+
+
+@app.route("/lineage")
+@login_required
+def lineage_index():
+    db = get_db()
+    people = db.execute("select people.*, group_concat(distinct heraldry_designs.name) as heraldry_names, max(wiki_pages.slug) as wiki_slug from people left join person_heraldry on person_heraldry.person_id = people.id left join heraldry_designs on heraldry_designs.id = person_heraldry.design_id left join wiki_pages on wiki_pages.page_type = 'person' and wiki_pages.title = people.name and wiki_pages.created_by = people.owner_id where people.owner_id = ? group by people.id order by people.name", (g.user["id"],)).fetchall()
+    houses = db.execute("select houses.*, wiki_pages.slug as wiki_slug, count(person_house_memberships.person_id) as member_count from houses left join wiki_pages on wiki_pages.page_type = 'house' and wiki_pages.title = houses.name and wiki_pages.created_by = houses.owner_id left join person_house_memberships on person_house_memberships.house_id = houses.id where houses.owner_id = ? group by houses.id order by houses.name", (g.user["id"],)).fetchall()
+    return render_template("lineage.html", people=people, houses=houses)
+
+
+@app.route("/people/new", methods=("GET", "POST"))
+@capability_required("manage_lineage")
+def new_person():
+    db = get_db()
+    houses = user_lineage_rows("houses")
+    people = user_lineage_rows("people")
+    designs = db.execute("select id, name from heraldry_designs order by name").fetchall()
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        if not name:
+            flash("Person name is required.", "error")
+        else:
+            cursor = db.execute("insert into people (name, biography, birth_date, death_date, created_by, owner_id) values (?, ?, ?, ?, ?, ?)", (name, request.form.get("biography", "").strip(), request.form.get("birth_date", "").strip(), request.form.get("death_date", "").strip(), g.user["id"], g.user["id"]))
+            person_id = cursor.lastrowid
+            for house_id in request.form.getlist("house_ids"):
+                db.execute("insert or ignore into person_house_memberships (person_id, house_id, role) values (?, ?, ?)", (person_id, int(house_id), request.form.get("house_role", "").strip()))
+            for parent_id in request.form.getlist("parent_ids"):
+                if int(parent_id) != person_id:
+                    db.execute("insert or ignore into person_parents (parent_id, child_id) values (?, ?)", (int(parent_id), person_id))
+            for design_id in request.form.getlist("heraldry_ids"):
+                db.execute("insert or ignore into person_heraldry (person_id, design_id) values (?, ?)", (person_id, int(design_id)))
+            ensure_lineage_wiki("person", name, g.user["id"])
+            db.commit()
+            return redirect(url_for("person_detail", person_id=person_id))
+    return render_template("person_form.html", person=None, houses=houses, people=people, designs=designs, selected_houses=[], selected_parents=[], selected_designs=[])
+
+
+@app.route("/people/<int:person_id>")
+@login_required
+def person_detail(person_id):
+    person = get_person(person_id)
+    if person["owner_id"] != g.user["id"]:
+        abort(404)
+    db = get_db()
+    parents = db.execute("select people.* from people join person_parents on people.id = person_parents.parent_id where person_parents.child_id = ? order by people.name", (person_id,)).fetchall()
+    children = db.execute("select people.* from people join person_parents on people.id = person_parents.child_id where person_parents.parent_id = ? order by people.name", (person_id,)).fetchall()
+    partners = db.execute("select people.*, person_partners.relationship_type from people join person_partners on people.id = person_partners.partner_id where person_partners.person_id = ? order by people.name", (person_id,)).fetchall()
+    houses = db.execute("select houses.*, person_house_memberships.role from houses join person_house_memberships on houses.id = person_house_memberships.house_id where person_house_memberships.person_id = ?", (person_id,)).fetchall()
+    titles = db.execute("select titles.*, person_titles.start_date, person_titles.end_date from titles join person_titles on titles.id = person_titles.title_id where person_titles.person_id = ?", (person_id,)).fetchall()
+    heraldry = db.execute("select heraldry_designs.*, person_heraldry.relationship_type from heraldry_designs join person_heraldry on heraldry_designs.id = person_heraldry.design_id where person_heraldry.person_id = ?", (person_id,)).fetchall()
+    return render_template("person_detail.html", person=person, parents=parents, children=children, partners=partners, houses=houses, titles=titles, heraldry=heraldry, people=user_lineage_rows("people"), all_houses=user_lineage_rows("houses"), designs=db.execute("select id, name from heraldry_designs order by name").fetchall())
+
+
+@app.route("/people/<int:person_id>/edit", methods=("GET", "POST"))
+@capability_required("manage_lineage")
+def edit_person(person_id):
+    person = get_person(person_id)
+    if person["owner_id"] != g.user["id"]:
+        abort(404)
+    if request.method == "POST":
+        get_db().execute("update people set name = ?, biography = ?, birth_date = ?, death_date = ?, updated_at = current_timestamp where id = ?", (request.form.get("name", "").strip(), request.form.get("biography", "").strip(), request.form.get("birth_date", "").strip(), request.form.get("death_date", "").strip(), person_id))
+        get_db().commit()
+        flash("Person saved.", "success")
+        return redirect(url_for("person_detail", person_id=person_id))
+    db = get_db()
+    return render_template("person_form.html", person=person, houses=user_lineage_rows("houses"), people=user_lineage_rows("people"), designs=db.execute("select id, name from heraldry_designs order by name").fetchall(), selected_houses=[row[0] for row in db.execute("select house_id from person_house_memberships where person_id = ?", (person_id,))], selected_parents=[row[0] for row in db.execute("select parent_id from person_parents where child_id = ?", (person_id,))], selected_designs=[row[0] for row in db.execute("select design_id from person_heraldry where person_id = ?", (person_id,))])
+
+
+@app.route("/people/<int:person_id>/parents", methods=("POST",))
+@capability_required("manage_lineage")
+def add_person_parent(person_id):
+    get_person(person_id)
+    try:
+        parent_id = int(request.form["parent_id"])
+        get_person(parent_id)
+    except (KeyError, ValueError):
+        abort(400)
+    if parent_id == person_id or would_create_parent_cycle(parent_id, person_id):
+        flash("That relationship would create a family-tree cycle.", "error")
+    else:
+        get_db().execute("insert or ignore into person_parents (parent_id, child_id) values (?, ?)", (parent_id, person_id))
+        get_db().commit()
+        flash("Parent relationship saved.", "success")
+    return redirect(url_for("person_detail", person_id=person_id))
+
+
+@app.route("/people/<int:person_id>/relationships", methods=("POST",))
+@capability_required("manage_lineage")
+def add_person_relationship(person_id):
+    person = get_person(person_id)
+    if person["owner_id"] != g.user["id"]:
+        abort(404)
+    kind = request.form.get("kind")
+    try:
+        target_id = int(request.form["target_id"])
+    except (KeyError, ValueError):
+        abort(400)
+    db = get_db()
+    if kind == "partner":
+        target = get_person(target_id)
+        if target["owner_id"] != g.user["id"] or target_id == person_id:
+            abort(400)
+        db.execute("insert or ignore into person_partners (person_id, partner_id, relationship_type) values (?, ?, ?)", (person_id, target_id, request.form.get("relationship_type", "partner")))
+        db.execute("insert or ignore into person_partners (person_id, partner_id, relationship_type) values (?, ?, ?)", (target_id, person_id, request.form.get("relationship_type", "partner")))
+    elif kind == "house":
+        if not db.execute("select 1 from houses where id = ? and owner_id = ?", (target_id, g.user["id"])).fetchone(): abort(400)
+        db.execute("insert or ignore into person_house_memberships (person_id, house_id, role) values (?, ?, ?)", (person_id, target_id, request.form.get("relationship_type", "member")))
+    elif kind == "heraldry":
+        db.execute("insert or ignore into person_heraldry (person_id, design_id, relationship_type) values (?, ?, ?)", (person_id, target_id, request.form.get("relationship_type", "associated")))
+    else:
+        abort(400)
+    db.commit()
+    return redirect(url_for("person_detail", person_id=person_id))
+
+
+@app.route("/houses/new", methods=("POST",))
+@capability_required("manage_lineage")
+def new_house():
+    name = request.form.get("name", "").strip()
+    if name:
+        get_db().execute("insert or ignore into houses (name, description, created_by, owner_id) values (?, ?, ?, ?)", (name, request.form.get("description", "").strip(), g.user["id"], g.user["id"]))
+        ensure_lineage_wiki("house", name, g.user["id"])
+        get_db().commit()
+        flash("House saved.", "success")
+    return redirect(url_for("lineage_index"))
+
+
+WIKI_PAGE_TYPES = ("person", "house", "symbol", "heraldry", "organization", "event", "location", "collection_item", "general")
+
+
+def wiki_slug(title):
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return slug or "page"
+
+
+def unique_wiki_slug(title, page_id=None):
+    db = get_db()
+    base = wiki_slug(title)
+    candidate = base
+    suffix = 2
+    while db.execute("select 1 from wiki_pages where slug = ? and (? is null or id <> ?)", (candidate, page_id, page_id)).fetchone():
+        candidate = f"{base}-{suffix}"
+        suffix += 1
+    return candidate
+
+
+def get_wiki_page(slug):
+    page = get_db().execute("select wiki_pages.*, users.username as creator_name from wiki_pages left join users on users.id = wiki_pages.created_by where wiki_pages.slug = ?", (slug,)).fetchone()
+    if page is None:
+        abort(404)
+    return page
+
+
+@app.route("/wiki")
+@login_required
+def wiki_index():
+    query = request.args.get("q", "").strip()
+    db = get_db()
+    if query:
+        pages = db.execute("select * from wiki_pages where title like ? or body like ? order by title", (f"%{query}%", f"%{query}%")).fetchall()
+    else:
+        pages = db.execute("select * from wiki_pages order by title").fetchall()
+    return render_template("wiki.html", pages=pages, query=query, page_types=WIKI_PAGE_TYPES)
+
+
+@app.route("/wiki/new", methods=("GET", "POST"))
+@capability_required("edit_wiki")
+def new_wiki_page():
+    if request.method == "POST":
+        title = request.form.get("title", "").strip()
+        page_type = request.form.get("page_type", "general")
+        if not title or page_type not in WIKI_PAGE_TYPES:
+            flash("A title and valid page type are required.", "error")
+        else:
+            db = get_db()
+            body = request.form.get("body", "").strip()
+            knowledge_id = create_knowledge_object(f"wiki_{page_type}", title, g.user["id"])
+            slug = unique_wiki_slug(title)
+            cursor = db.execute("insert into wiki_pages (knowledge_object_id, slug, page_type, title, body, created_by) values (?, ?, ?, ?, ?, ?)", (knowledge_id, slug, page_type, title, body, g.user["id"]))
+            page_id = cursor.lastrowid
+            db.execute("insert into wiki_revisions (page_id, revision_number, title, body, created_by) values (?, 1, ?, ?, ?)", (page_id, title, body, g.user["id"]))
+            db.commit()
+            return redirect(url_for("wiki_page", slug=slug))
+    return render_template("wiki_form.html", page=None, page_types=WIKI_PAGE_TYPES)
+
+
+@app.route("/wiki/<slug>")
+@login_required
+def wiki_page(slug):
+    page = get_wiki_page(slug)
+    db = get_db()
+    links = db.execute("select wiki_pages.slug, wiki_pages.title, wiki_page_links.relationship_type from wiki_pages join wiki_page_links on wiki_pages.id = wiki_page_links.target_page_id where wiki_page_links.source_page_id = ? order by wiki_pages.title", (page["id"],)).fetchall()
+    backlinks = db.execute("select wiki_pages.slug, wiki_pages.title, wiki_page_links.relationship_type from wiki_pages join wiki_page_links on wiki_pages.id = wiki_page_links.source_page_id where wiki_page_links.target_page_id = ? order by wiki_pages.title", (page["id"],)).fetchall()
+    categories = db.execute("select category from wiki_page_categories where page_id = ? order by category", (page["id"],)).fetchall()
+    pages = db.execute("select id, title from wiki_pages where id <> ? order by title", (page["id"],)).fetchall()
+    return render_template("wiki_page.html", page=page, links=links, backlinks=backlinks, categories=categories, pages=pages)
+
+
+@app.route("/wiki/<slug>/edit", methods=("GET", "POST"))
+@capability_required("edit_wiki")
+def edit_wiki_page(slug):
+    page = get_wiki_page(slug)
+    if request.method == "POST":
+        db = get_db()
+        title = request.form.get("title", "").strip()
+        body = request.form.get("body", "").strip()
+        revision = db.execute("select coalesce(max(revision_number), 0) + 1 from wiki_revisions where page_id = ?", (page["id"],)).fetchone()[0]
+        new_slug = unique_wiki_slug(title, page["id"])
+        db.execute("update wiki_pages set slug = ?, title = ?, body = ?, updated_at = current_timestamp where id = ?", (new_slug, title, body, page["id"]))
+        db.execute("insert into wiki_revisions (page_id, revision_number, title, body, created_by) values (?, ?, ?, ?, ?)", (page["id"], revision, title, body, g.user["id"]))
+        db.commit()
+        flash("Wiki page saved.", "success")
+        return redirect(url_for("wiki_page", slug=new_slug))
+    return render_template("wiki_form.html", page=page, page_types=WIKI_PAGE_TYPES)
+
+
+@app.route("/wiki/<slug>/history")
+@login_required
+def wiki_history(slug):
+    page = get_wiki_page(slug)
+    revisions = get_db().execute("select wiki_revisions.*, users.username from wiki_revisions left join users on users.id = wiki_revisions.created_by where page_id = ? order by revision_number desc", (page["id"],)).fetchall()
+    return render_template("wiki_history.html", page=page, revisions=revisions)
+
+
+@app.route("/wiki/<slug>/links", methods=("POST",))
+@capability_required("edit_wiki")
+def add_wiki_link(slug):
+    page = get_wiki_page(slug)
+    target = get_db().execute("select id, slug from wiki_pages where id = ?", (request.form.get("target_page_id"),)).fetchone()
+    if target is None or target["id"] == page["id"]:
+        abort(400)
+    relationship = request.form.get("relationship_type", "related").strip() or "related"
+    get_db().execute("insert or ignore into wiki_page_links (source_page_id, target_page_id, relationship_type) values (?, ?, ?)", (page["id"], target["id"], relationship))
+    get_db().commit()
+    flash("Wiki relationship saved.", "success")
+    return redirect(url_for("wiki_page", slug=slug))
+
+
+ANNOTATION_TYPES = {"rectangle", "polygon", "ellipse", "point", "freehand"}
+ANNOTATION_STATES = {"draft", "submitted", "approved", "rejected"}
+
+
+def valid_annotation_geometry(geometry_type, raw_geometry):
+    if geometry_type not in ANNOTATION_TYPES:
+        raise ValueError("Unsupported annotation shape.")
+    try:
+        geometry = json.loads(raw_geometry or "{}")
+    except json.JSONDecodeError as error:
+        raise ValueError("Invalid annotation geometry.") from error
+    if not isinstance(geometry, (dict, list)):
+        raise ValueError("Invalid annotation geometry.")
+    values = []
+    def collect(value):
+        if isinstance(value, (int, float)):
+            values.append(value)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+        elif isinstance(value, dict):
+            for child in value.values():
+                collect(child)
+    collect(geometry)
+    if not values or any(value < 0 or value > 1 for value in values):
+        raise ValueError("Annotation coordinates must be normalized between 0 and 1.")
+    return geometry
+
+
+@app.route("/images/<int:image_id>/annotate", methods=("GET", "POST"))
+@capability_required("label_images")
+def annotate_image(image_id):
+    image = get_image(image_id)
+    if not user_can_manage_image(image):
+        abort(403)
+    db = get_db()
+    symbols = db.execute("select id, name from symbols order by name").fetchall()
+    if request.method == "POST":
+        try:
+            geometry_type = request.form["geometry_type"]
+            geometry = valid_annotation_geometry(geometry_type, request.form.get("geometry"))
+            symbol_id = int(request.form["symbol_id"])
+            if db.execute("select 1 from symbols where id = ?", (symbol_id,)).fetchone() is None:
+                raise ValueError("Invalid symbol.")
+        except (KeyError, ValueError) as error:
+            flash(str(error), "error")
+        else:
+            cursor = db.execute("insert into annotations (image_id, symbol_id, geometry_type, geometry, labeler_id) values (?, ?, ?, ?, ?)", (image_id, symbol_id, geometry_type, json.dumps(geometry), g.user["id"]))
+            annotation_id = cursor.lastrowid
+            db.execute("insert into annotation_revisions (annotation_id, revision_number, geometry_type, geometry, symbol_id, status, created_by) values (?, 1, ?, ?, ?, 'draft', ?)", (annotation_id, geometry_type, json.dumps(geometry), symbol_id, g.user["id"]))
+            db.commit()
+            flash("Annotation saved as a draft.", "success")
+            return redirect(url_for("annotate_image", image_id=image_id))
+    annotations = db.execute("select annotations.*, symbols.name as symbol_name, users.username as labeler_name from annotations join symbols on symbols.id = annotations.symbol_id left join users on users.id = annotations.labeler_id where image_id = ? order by annotations.id", (image_id,)).fetchall()
+    return render_template("annotate_image.html", image=image, symbols=symbols, annotations=annotations)
+
+
+@app.route("/annotations/<int:annotation_id>/submit", methods=("POST",))
+@capability_required("label_images")
+def submit_annotation(annotation_id):
+    annotation = get_db().execute("select * from annotations where id = ?", (annotation_id,)).fetchone()
+    if annotation is None:
+        abort(404)
+    image = get_image(annotation["image_id"])
+    if not user_can_manage_image(image) or annotation["status"] not in {"draft", "rejected"}:
+        abort(403)
+    get_db().execute("update annotations set status = 'submitted', updated_at = current_timestamp where id = ?", (annotation_id,))
+    get_db().commit()
+    flash("Annotation submitted for review.", "success")
+    return redirect(url_for("annotate_image", image_id=image["id"]))
+
+
+@app.route("/admin/annotations")
+@capability_required("review_annotations")
+def review_annotations():
+    annotations = get_db().execute("select annotations.*, symbols.name as symbol_name, item_images.filename, items.name as item_name, users.username as labeler_name from annotations join symbols on symbols.id = annotations.symbol_id join item_images on item_images.id = annotations.image_id join items on items.id = item_images.item_id left join users on users.id = annotations.labeler_id where annotations.status = 'submitted' order by annotations.created_at").fetchall()
+    return render_template("annotation_review.html", annotations=annotations)
+
+
+@app.route("/admin/annotations/<int:annotation_id>/review", methods=("POST",))
+@capability_required("review_annotations")
+def review_annotation(annotation_id):
+    decision = request.form.get("decision")
+    if decision not in {"approved", "rejected"}:
+        abort(400)
+    db = get_db()
+    annotation = db.execute("select * from annotations where id = ?", (annotation_id,)).fetchone()
+    if annotation is None:
+        abort(404)
+    db.execute("update annotations set status = ?, reviewer_id = ?, updated_at = current_timestamp where id = ?", (decision, g.user["id"], annotation_id))
+    db.execute("insert into annotation_reviews (annotation_id, reviewer_id, decision, note) values (?, ?, ?, ?)", (annotation_id, g.user["id"], decision, request.form.get("note", "").strip()))
+    revision = db.execute("select coalesce(max(revision_number), 0) + 1 from annotation_revisions where annotation_id = ?", (annotation_id,)).fetchone()[0]
+    db.execute("insert into annotation_revisions (annotation_id, revision_number, geometry_type, geometry, symbol_id, status, created_by) values (?, ?, ?, ?, ?, ?, ?)", (annotation_id, revision, annotation["geometry_type"], annotation["geometry"], annotation["symbol_id"], decision, g.user["id"]))
+    record_audit(f"{decision}_annotation", "annotation", annotation_id)
+    db.commit()
+    flash(f"Annotation {decision}.", "success")
+    return redirect(url_for("review_annotations"))
+
+
+@app.route("/admin/ai")
+@capability_required("admin_ai")
+def ai_lab():
+    db = get_db()
+    datasets = db.execute("select ai_datasets.*, count(ai_dataset_versions.id) as version_count from ai_datasets left join ai_dataset_versions on ai_dataset_versions.dataset_id = ai_datasets.id group by ai_datasets.id order by ai_datasets.name").fetchall()
+    runs = db.execute("select ai_training_runs.*, ai_datasets.name as dataset_name from ai_training_runs join ai_dataset_versions on ai_dataset_versions.id = ai_training_runs.dataset_version_id join ai_datasets on ai_datasets.id = ai_dataset_versions.dataset_id order by ai_training_runs.created_at desc limit 20").fetchall()
+    models = db.execute("select ai_models.*, count(ai_model_versions.id) as version_count from ai_models left join ai_model_versions on ai_model_versions.model_id = ai_models.id group by ai_models.id order by ai_models.name").fetchall()
+    model_versions = db.execute("select ai_model_versions.*, ai_models.name as model_name, exists(select 1 from ai_deployments where ai_deployments.model_version_id = ai_model_versions.id and ai_deployments.status = 'active') as active from ai_model_versions join ai_models on ai_models.id = ai_model_versions.model_id order by ai_models.name, version_number desc").fetchall()
+    return render_template("ai_lab.html", datasets=datasets, runs=runs, models=models, model_versions=model_versions)
+
+
+@app.route("/admin/ai/datasets", methods=("POST",))
+@capability_required("admin_ai")
+def create_ai_dataset():
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Dataset name is required.", "error")
+        return redirect(url_for("ai_lab"))
+    db = get_db()
+    cursor = db.execute("insert into ai_datasets (name, description, created_by) values (?, ?, ?)", (name, request.form.get("description", "").strip(), g.user["id"]))
+    dataset_id = cursor.lastrowid
+    annotations = db.execute("select annotations.id, annotations.symbol_id from annotations where annotations.status = 'approved' order by annotations.id").fetchall()
+    version = db.execute("insert into ai_dataset_versions (dataset_id, version_number, sample_count, split_seed, created_by) values (?, 1, ?, ?, ?)", (dataset_id, len(annotations), 4217, g.user["id"]))
+    version_id = version.lastrowid
+    for index, annotation in enumerate(annotations):
+        class_row = db.execute("select id from ai_classes where symbol_id = ?", (annotation["symbol_id"],)).fetchone()
+        if class_row is None:
+            class_row = db.execute("insert into ai_classes (name, symbol_id) select name, id from symbols where id = ?", (annotation["symbol_id"],))
+            class_id = class_row.lastrowid
+        else:
+            class_id = class_row["id"]
+        split = "test" if index % 10 == 0 else "validation" if index % 10 == 1 else "train"
+        db.execute("insert into ai_dataset_samples (dataset_version_id, annotation_id, class_id, split) values (?, ?, ?, ?)", (version_id, annotation["id"], class_id, split))
+    db.commit()
+    flash("Dataset version created from approved annotations.", "success")
+    return redirect(url_for("ai_lab"))
+
+
+@app.route("/admin/ai/datasets/<int:version_id>/export")
+@capability_required("admin_ai")
+def export_ai_dataset(version_id):
+    db = get_db()
+    version = db.execute("select ai_dataset_versions.*, ai_datasets.name from ai_dataset_versions join ai_datasets on ai_datasets.id = ai_dataset_versions.dataset_id where ai_dataset_versions.id = ?", (version_id,)).fetchone()
+    if version is None:
+        abort(404)
+    samples = db.execute("select ai_dataset_samples.*, annotations.geometry_type, annotations.geometry, annotations.image_id, ai_classes.name as class_name from ai_dataset_samples join annotations on annotations.id = ai_dataset_samples.annotation_id join ai_classes on ai_classes.id = ai_dataset_samples.class_id where dataset_version_id = ?", (version_id,)).fetchall()
+    payload = {"dataset": version["name"], "version": version["version_number"], "splits": [dict(sample) for sample in samples]}
+    response = app.response_class(json.dumps(payload, indent=2), mimetype="application/json")
+    response.headers["Content-Disposition"] = f'attachment; filename="dataset-{version_id}.json"'
+    return response
+
+
+@app.route("/admin/ai/training", methods=("POST",))
+@capability_required("admin_ai")
+def create_training_run():
+    version_id = request.form.get("dataset_version_id")
+    if get_db().execute("select 1 from ai_dataset_versions where id = ?", (version_id,)).fetchone() is None:
+        abort(400)
+    try:
+        parameters = valid_json_object(request.form.get("parameters"), "Training parameters must be valid JSON.")
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("ai_lab"))
+    get_db().execute("insert into ai_training_runs (dataset_version_id, parameters, created_by) values (?, ?, ?)", (version_id, parameters, g.user["id"]))
+    get_db().commit()
+    flash("Training run queued.", "success")
+    return redirect(url_for("ai_lab"))
+
+
+@app.route("/admin/ai/models", methods=("POST",))
+@capability_required("admin_ai")
+def create_ai_model():
+    name = request.form.get("name", "").strip()
+    if name:
+        get_db().execute("insert or ignore into ai_models (name, description) values (?, ?)", (name, request.form.get("description", "").strip()))
+        get_db().commit()
+        flash("Model registered.", "success")
+    return redirect(url_for("ai_lab"))
+
+
+@app.route("/admin/ai/models/<int:model_id>/versions", methods=("POST",))
+@capability_required("admin_ai")
+def add_ai_model_version(model_id):
+    db = get_db()
+    if db.execute("select 1 from ai_models where id = ?", (model_id,)).fetchone() is None:
+        abort(404)
+    version = db.execute("select coalesce(max(version_number), 0) + 1 from ai_model_versions where model_id = ?", (model_id,)).fetchone()[0]
+    try:
+        metrics = valid_json_object(request.form.get("metrics"), "Model metrics must be valid JSON.")
+    except ValueError as error:
+        flash(str(error), "error")
+        return redirect(url_for("ai_lab"))
+    db.execute("insert into ai_model_versions (model_id, version_number, metrics, created_by) values (?, ?, ?, ?)", (model_id, version, metrics, g.user["id"]))
+    db.commit()
+    flash("Model version imported.", "success")
+    return redirect(url_for("ai_lab"))
+
+
+@app.route("/admin/ai/models/versions/<int:version_id>/deploy", methods=("POST",))
+@capability_required("deploy_models")
+def deploy_ai_model(version_id):
+    db = get_db()
+    if db.execute("select 1 from ai_model_versions where id = ?", (version_id,)).fetchone() is None:
+        abort(404)
+    db.execute("update ai_deployments set status = 'rolled_back' where status = 'active'")
+    db.execute("insert into ai_deployments (model_version_id, deployed_by) values (?, ?)", (version_id, g.user["id"]))
+    record_audit("deploy_model", "ai_model_version", version_id)
+    db.commit()
+    flash("Model deployed.", "success")
+    return redirect(url_for("ai_lab"))
+
+
+@app.route("/images/<int:image_id>/suggestions", methods=("GET", "POST"))
+@capability_required("label_images")
+def image_suggestions(image_id):
+    image = get_image(image_id)
+    if not user_can_manage_image(image):
+        abort(403)
+    db = get_db()
+    if request.method == "POST":
+        model = db.execute("select ai_model_versions.id from ai_model_versions join ai_deployments on ai_deployments.model_version_id = ai_model_versions.id where ai_deployments.status = 'active' order by ai_deployments.deployed_at desc limit 1").fetchone()
+        if model is None:
+            flash("No active model is deployed.", "error")
+        else:
+            try:
+                geometry_type = request.form["geometry_type"]
+                geometry = valid_annotation_geometry(geometry_type, request.form.get("geometry"))
+                symbol_id = int(request.form["symbol_id"])
+                confidence = max(0, min(1, float(request.form.get("confidence", 0))))
+            except (KeyError, ValueError) as error:
+                flash(str(error), "error")
+            else:
+                db.execute("insert into ai_suggestions (image_id, model_version_id, symbol_id, geometry_type, geometry, confidence) values (?, ?, ?, ?, ?, ?)", (image_id, model["id"], symbol_id, geometry_type, json.dumps(geometry), confidence))
+                db.commit()
+                flash("AI suggestion created for review.", "success")
+    suggestions = db.execute("select ai_suggestions.*, symbols.name as symbol_name from ai_suggestions join symbols on symbols.id = ai_suggestions.symbol_id where image_id = ? order by ai_suggestions.created_at desc", (image_id,)).fetchall()
+    symbols = db.execute("select id, name from symbols order by name").fetchall()
+    return render_template("suggestions.html", image=image, suggestions=suggestions, symbols=symbols)
+
+
+def get_suggestion(suggestion_id):
+    suggestion = get_db().execute("select * from ai_suggestions where id = ?", (suggestion_id,)).fetchone()
+    if suggestion is None:
+        abort(404)
+    image = get_image(suggestion["image_id"])
+    if not user_can_manage_image(image):
+        abort(403)
+    return suggestion, image
+
+
+@app.route("/suggestions/<int:suggestion_id>/accept", methods=("POST",))
+@capability_required("label_images")
+def accept_suggestion(suggestion_id):
+    suggestion, image = get_suggestion(suggestion_id)
+    if suggestion["status"] != "pending":
+        abort(400)
+    db = get_db()
+    cursor = db.execute("insert into annotations (image_id, symbol_id, geometry_type, geometry, status, labeler_id) values (?, ?, ?, ?, 'submitted', ?)", (image["id"], suggestion["symbol_id"], suggestion["geometry_type"], suggestion["geometry"], g.user["id"]))
+    db.execute("insert into annotation_revisions (annotation_id, revision_number, geometry_type, geometry, symbol_id, status, created_by) values (?, 1, ?, ?, ?, 'submitted', ?)", (cursor.lastrowid, suggestion["geometry_type"], suggestion["geometry"], suggestion["symbol_id"], g.user["id"]))
+    db.execute("update ai_suggestions set status = 'accepted', reviewed_by = ? where id = ?", (g.user["id"], suggestion_id))
+    record_audit("accept_ai_suggestion", "ai_suggestion", suggestion_id)
+    db.commit()
+    flash("Suggestion accepted and submitted for annotation review.", "success")
+    return redirect(url_for("image_suggestions", image_id=image["id"]))
+
+
+@app.route("/suggestions/<int:suggestion_id>/reject", methods=("POST",))
+@capability_required("label_images")
+def reject_suggestion(suggestion_id):
+    suggestion, image = get_suggestion(suggestion_id)
+    if suggestion["status"] != "pending":
+        abort(400)
+    get_db().execute("update ai_suggestions set status = 'rejected', reviewed_by = ? where id = ?", (g.user["id"], suggestion_id))
+    record_audit("reject_ai_suggestion", "ai_suggestion", suggestion_id)
+    get_db().commit()
+    flash("Suggestion rejected.", "success")
+    return redirect(url_for("image_suggestions", image_id=image["id"]))
+
+
+def record_activity(event_type, object_type="", object_id=None, metadata="{}", user_id=None):
+    get_db().execute("insert into activity_events (user_id, event_type, object_type, object_id, metadata) values (?, ?, ?, ?, ?)", (user_id if user_id is not None else (g.user["id"] if g.user else None), event_type, object_type, object_id, metadata))
+
+
+def record_audit(action, object_type="", object_id=None, details="{}", user_id=None):
+    get_db().execute("insert into audit_events (user_id, action, object_type, object_id, details) values (?, ?, ?, ?, ?)", (user_id if user_id is not None else (g.user["id"] if g.user else None), action, object_type, object_id, details))
+
+
+@app.route("/admin/metrics")
+@admin_required
+def metrics_dashboard():
+    db = get_db()
+    user_metrics = {
+        "active_users": db.execute("select count(distinct user_id) from activity_events where created_at >= datetime('now', '-30 days')").fetchone()[0],
+        "items_added": db.execute("select count(*) from items").fetchone()[0],
+        "images_uploaded": db.execute("select count(*) from item_images").fetchone()[0],
+        "heraldry_created": db.execute("select count(*) from heraldry_designs").fetchone()[0],
+        "wiki_edits": db.execute("select count(*) from wiki_revisions").fetchone()[0],
+    }
+    label_counts = db.execute("select status, count(*) as count from annotations group by status order by status").fetchall()
+    ai_metrics = {
+        "supported_classes": db.execute("select count(*) from ai_classes").fetchone()[0],
+        "labels_total": db.execute("select count(*) from annotations").fetchone()[0],
+        "review_backlog": db.execute("select count(*) from annotations where status = 'submitted'").fetchone()[0],
+        "classes_needing_samples": db.execute("select count(*) from ai_classes left join annotations on annotations.symbol_id = ai_classes.symbol_id and annotations.status = 'approved' group by ai_classes.id having count(annotations.id) < 5").fetchall(),
+        "training_runs": db.execute("select count(*) from ai_training_runs").fetchone()[0],
+        "model_versions": db.execute("select count(*) from ai_model_versions").fetchone()[0],
+        "suggestions": db.execute("select count(*) from ai_suggestions").fetchone()[0],
+        "suggestions_accepted": db.execute("select count(*) from ai_suggestions where status = 'accepted'").fetchone()[0],
+    }
+    suggestion_total = ai_metrics["suggestions"]
+    ai_metrics["suggestion_acceptance_rate"] = round(ai_metrics["suggestions_accepted"] * 100 / suggestion_total, 1) if suggestion_total else 0
+    recent_audit = db.execute("select audit_events.*, users.username from audit_events left join users on users.id = audit_events.user_id order by audit_events.created_at desc limit 30").fetchall()
+    return render_template("metrics.html", user_metrics=user_metrics, ai_metrics=ai_metrics, label_counts=label_counts, recent_audit=recent_audit)
+
+
+@app.route("/admin/symbol-categories", methods=("POST",))
+@admin_required
+def create_symbol_category():
+    name = request.form.get("name", "").strip()
+    if name:
+        get_db().execute("insert or ignore into symbol_categories (name, description) values (?, ?)", (name, request.form.get("description", "").strip()))
+        get_db().commit()
+        flash("Symbol category saved.", "success")
+    return redirect(url_for("symbols_index"))
 
 
 @app.route("/admin")
@@ -1462,7 +3141,36 @@ def admin_users():
             db.commit()
             flash("User created.", "success")
     users = db.execute("select id, username, role, created_at from users order by username").fetchall()
-    return render_template("admin_users.html", users=users)
+    capability_rows = db.execute(
+        "select user_id, capability from user_capabilities where enabled = 1"
+    ).fetchall()
+    user_capabilities = {}
+    for row in capability_rows:
+        user_capabilities.setdefault(row["user_id"], set()).add(row["capability"])
+    return render_template(
+        "admin_users.html",
+        users=users,
+        capabilities=CAPABILITIES,
+        user_capabilities=user_capabilities,
+    )
+
+
+@app.route("/admin/users/<int:user_id>/capabilities", methods=("POST",))
+@admin_required
+def update_user_capabilities(user_id):
+    db = get_db()
+    user = db.execute("select id from users where id = ?", (user_id,)).fetchone()
+    if user is None:
+        abort(404)
+    selected = {value for value in request.form.getlist("capabilities") if value in CAPABILITIES}
+    db.execute("delete from user_capabilities where user_id = ?", (user_id,))
+    db.executemany(
+        "insert into user_capabilities (user_id, capability) values (?, ?)",
+        ((user_id, capability) for capability in selected),
+    )
+    db.commit()
+    flash("User capabilities saved.", "success")
+    return redirect(url_for("admin_users"))
 
 
 @app.route("/admin/collections")

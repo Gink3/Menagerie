@@ -1,0 +1,17 @@
+Lets hide the Logout, Color Scheme selector, and Light/Dark mode buttons in a hamburger menu button. This should expand to show those options. The hamburger menu button should stay on the right side.
+
+
+
+Move the "Administration" button from under AI Settings to the hamburger menu. Also rename it to "Admin"
+Move the "Settings" button from under the "Collections" menu button to the new hamburger menu to the new "Admin" option in the hamburger menu
+
+Add functionality to support AI data labeling. I want to have a svg decal and associate AI labels from that "ideal" sample to real decals on minis. This way we can label real images with bounding boxes and use the decals as classes for the bounding boxes.
+
+Add a random page button to the Wiki.
+
+In the wiki all pages should be markdown pages for wiki articles.
+
+Bring the wiki to the top menu bar.
+
+Put the "AI Settings" in the hamburger menu.
+

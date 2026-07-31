@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="workflow-head">
+  <span class="workflow-step">Step 1 of 2</span>
+  <h1>Upload a template</h1>
+  <p>Templates are reusable black-outline SVGs. Your color-filled decals are created separately, so the original stays safe.</p>
+</section>
+<form method="post" action="{{ url_for('upload_heraldry_outline') }}" enctype="multipart/form-data" class="panel template-upload-form stack">
+  {{ csrf_field()|safe }}
+  <label class="upload-dropzone" for="template-file">
+    <span class="upload-icon" aria-hidden="true">↑</span>
+    <strong>Choose an SVG outline</strong>
+    <span>SVG files only · the filename becomes the suggested template name</span>
+    <input name="svg_file" id="template-file" type="file" accept="image/svg+xml,.svg" required>
+  </label>
+  <p id="template-status" class="meta">No file selected yet.</p>
+  <div id="template-preview" class="heraldry-preview template-preview" hidden></div>
+  <label>Template name<input name="name" id="template-name" autofocus placeholder="Defaults to the SVG filename"></label>
+  <div class="workflow-actions">
+    <button class="subtle" name="next" value="library">Save template</button>
+    <button name="next" value="build">Save template and build decal <span aria-hidden="true">→</span></button>
+  </div>
+</form>
+<script>
+document.querySelector('#template-file').addEventListener('change', (event) => { const file = event.target.files[0]; if (!file) return; const name = document.querySelector('#template-name'); if (!name.value.trim()) name.value = file.name.replace(/\.svg$/i, ''); const reader = new FileReader(); reader.onload = () => { const preview = document.querySelector('#template-preview'); preview.innerHTML = reader.result; const svg = preview.querySelector('svg'); const areas = svg ? [...svg.querySelectorAll('path,rect,circle,ellipse,polygon,polyline')] : []; areas.forEach((area) => { area.setAttribute('fill', 'none'); area.setAttribute('stroke', '#000'); if (!area.getAttribute('stroke-width')) area.setAttribute('stroke-width', '2'); }); preview.hidden = false; document.querySelector('#template-status').textContent = `${file.name} · ${areas.length} editable outline area${areas.length === 1 ? '' : 's'} detected.`; }; reader.readAsText(file); });
+</script>
+{% endblock %}

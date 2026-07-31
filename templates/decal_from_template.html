@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="workflow-head">
+  <span class="workflow-step">Step 2 of 2</span>
+  <h1>Build a decal</h1>
+  <p>Create a personal color-filled decal from <strong>{{ template.name }}</strong>. The shared template remains unchanged.</p>
+</section>
+<div class="decal-build-layout">
+  <section class="panel source-template-panel"><div class="section-label">Source template</div><div class="heraldry-preview">{{ template.svg_markup|safe }}</div><p class="meta">Black outlines mark the areas you will fill in the editor.</p></section>
+  <form method="post" class="panel stack decal-name-panel">{{ csrf_field()|safe }}<div class="section-label">New decal</div><h2>Name your decal</h2><label>Decal name<input name="name" value="{{ template.name }} decal" required autofocus></label><p class="meta">Next you will choose colors and click areas to fill them.</p><button>Create and open editor <span aria-hidden="true">→</span></button><a class="text-link" href="{{ url_for('decal_templates_index') }}">← Back to template library</a></form>
+</div>
+{% endblock %}

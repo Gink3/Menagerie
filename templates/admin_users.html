@@ -15,5 +15,29 @@
   <select name="role"><option>collector</option><option>viewer</option><option>admin</option></select>
   <button type="submit">Add user</button>
 </form>
-<div class="table-wrap"><table><tr><th>Username</th><th>Role</th><th>Created</th></tr>{% for user in users %}<tr><td>{{ user.username }}</td><td>{{ user.role }}</td><td>{{ user.created_at }}</td></tr>{% endfor %}</table></div>
+<div class="table-wrap"><table>
+  <tr><th>Username</th><th>Role</th><th>Created</th><th>Capabilities</th></tr>
+  {% for user in users %}
+    <tr>
+      <td>{{ user.username }}</td>
+      <td>{{ user.role }}</td>
+      <td>{{ user.created_at }}</td>
+      <td>
+        {% if user.role == 'admin' %}
+          All capabilities
+        {% else %}
+          <form method="post" action="{{ url_for('update_user_capabilities', user_id=user.id) }}" class="stack">
+            {{ csrf_field()|safe }}
+            {% for capability, label in capabilities.items() %}
+              <label class="check-row"><input type="checkbox" name="capabilities" value="{{ capability }}" {% if capability in user_capabilities.get(user.id, set()) %}checked{% endif %}> {{ label }}</label>
+            {% endfor %}
+            <button type="submit">Save capabilities</button>
+          </form>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4">No users yet.</td></tr>
+  {% endfor %}
+</table></div>
 {% endblock %}

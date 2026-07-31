@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>{{ design.name }}</h1><p>{{ design.template_name }} · Revision {{ revisions[0].revision_number }}</p></div><div class="actions"><a class="button subtle" href="{{ url_for('export_heraldry_svg', design_id=design.id) }}">Export SVG</a><button class="button subtle" type="button" id="export-png">Export PNG</button>{% if has_capability(g.user, 'manage_heraldry') %}<a class="button" href="{{ url_for('edit_heraldry', design_id=design.id) }}">Edit</a><form method="post" action="{{ url_for('copy_heraldry', design_id=design.id) }}">{{ csrf_field()|safe }}<button class="button subtle">Customize Decal</button></form>{% endif %}</div></div>
+<div class="panel heraldry-preview" id="heraldry-preview">{{ svg|safe }}</div>
+<div class="panel"><h2>Revision history</h2><ul>{% for revision in revisions %}<li>Revision {{ revision.revision_number }} · {{ revision.created_at }}</li>{% endfor %}</ul></div>
+<script>
+document.querySelector('#export-png').addEventListener('click', () => { const svg = document.querySelector('#heraldry-preview svg'); const blob = new Blob([new XMLSerializer().serializeToString(svg)], {type:'image/svg+xml'}); const image = new Image(); image.onload = () => { const canvas = document.createElement('canvas'); canvas.width = 800; canvas.height = 1000; canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height); const link = document.createElement('a'); link.download = 'heraldry-{{ design.id }}.png'; link.href = canvas.toDataURL('image/png'); link.click(); URL.revokeObjectURL(image.src); }; image.src = URL.createObjectURL(blob); });
+</script>
+{% endblock %}

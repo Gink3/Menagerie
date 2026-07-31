@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Symbol Atlas</h1><p>Reusable symbols for heraldry, knowledge pages, and image labels.</p></div>{% if has_capability(g.user, 'manage_symbols') %}<a class="button" href="{{ url_for('new_symbol') }}">New symbol</a>{% endif %}</div>
+<div class="collection-grid">
+  {% for symbol in symbols %}
+    <a class="card" href="{{ url_for('symbol_detail', symbol_id=symbol.id) }}"><div class="symbol-preview"><span>{{ symbol.name[:1] }}</span></div><h2>{{ symbol.name }}</h2><p>{{ symbol.category_name or "Uncategorized" }}</p></a>
+  {% else %}<div class="empty">No symbols have been added.</div>{% endfor %}
+</div>
+{% if g.user.role == 'admin' %}
+<form method="post" action="{{ url_for('create_symbol_category') }}" class="panel stack" style="margin-top:18px"><h2>New category</h2>{{ csrf_field()|safe }}<label>Name<input name="name" required></label><label>Description<input name="description"></label><button type="submit">Save category</button></form>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" aria-label="Donut decal outline">
+  <circle cx="200" cy="200" r="170" fill="none" stroke="#000000" stroke-width="14"/>
+  <circle cx="200" cy="200" r="70" fill="none" stroke="#000000" stroke-width="14"/>
+  <path d="M82 138 Q200 55 318 138 L300 205 Q200 165 100 205 Z" fill="none" stroke="#000000" stroke-width="10"/>
+  <circle cx="132" cy="135" r="9" fill="none" stroke="#000000" stroke-width="6"/>
+  <circle cx="205" cy="111" r="9" fill="none" stroke="#000000" stroke-width="6"/>
+  <circle cx="270" cy="151" r="9" fill="none" stroke="#000000" stroke-width="6"/>
+</svg>
