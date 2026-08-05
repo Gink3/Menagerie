@@ -252,8 +252,7 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 }
 .collection-table .item-column { min-width: 260px; }
 .heraldry-preview svg { display: block; margin: 0 auto; max-height: 620px; max-width: 100%; }
-.svg-fill-area { cursor: pointer; pointer-events: all; stroke: rgba(0,0,0,.35); stroke-width: 1; transition: filter .15s; }
-.svg-fill-area:hover { filter: brightness(.82); }
+.editor-artboard .svg-fill-area { cursor: pointer; pointer-events: all; }
 .decal-library { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); }
 .decal-source { align-items: stretch; cursor: pointer; display: grid; gap: 8px; text-align: left; }
 .decal-source.selected { box-shadow: 0 0 0 3px var(--accent); }
@@ -262,7 +261,6 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 .upload-outline { margin-top: 12px; }
 .color-control { align-items: center; display: inline-flex; gap: 7px; width: fit-content; }
 .color-control input[type="color"] { block-size: 30px; inline-size: 30px; padding: 1px; }
-.svg-fill-area.selected-area { stroke: var(--accent); stroke-width: 4; }
 .workflow-head { margin: 10px auto 24px; max-width: 780px; text-align: center; }
 .workflow-head h1 { font-size: clamp(28px, 4vw, 42px); margin: 6px 0 10px; }
 .workflow-head p { color: var(--muted); margin: 0 auto; max-width: 650px; }
@@ -300,26 +298,36 @@ th { background: var(--table-head); font-size: 13px; text-transform: uppercase; 
 .decal-editor-form { display: grid; gap: 14px; }
 .editor-titlebar { align-items: end; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: flex; gap: 16px; justify-content: space-between; padding: 14px; }
 .editor-titlebar > label { flex: 1; max-width: 420px; }
-.svg-editor { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: grid; grid-template-columns: minmax(220px, 270px) minmax(0, 1fr); min-height: 620px; overflow: hidden; }
-.editor-sidebar { border-right: 1px solid var(--line); display: grid; align-content: start; gap: 16px; overflow: auto; padding: 18px; }
-.editor-sidebar section { display: grid; gap: 10px; }
+.svg-editor { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; display: grid; grid-template-areas: "paint paint" "canvas layers"; grid-template-columns: minmax(0, 1fr) minmax(230px, 280px); grid-template-rows: auto minmax(620px, 1fr); overflow: hidden; }
+.editor-colorbar { align-items: center; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 14px; grid-area: paint; padding: 12px 16px; }
+.editor-colorbar .section-label { margin-right: 2px; }
 .editor-color { align-items: center; display: grid; gap: 8px; grid-template-columns: 42px 1fr; }
 .editor-color input[type="color"] { block-size: 42px; inline-size: 42px; padding: 1px; }
 .editor-color input[type="text"], .editor-color input:not([type]) { grid-column: 2; }
+.opacity-control { align-items: center; display: flex; gap: 8px; white-space: nowrap; }
+.opacity-control input { width: 130px; }
 .palette { display: flex; flex-wrap: wrap; gap: 7px; }
 .palette button { background: var(--swatch); border: 2px solid var(--line); border-radius: 50%; height: 25px; min-width: 25px; padding: 0; width: 25px; }
 .palette button:hover, .palette button:focus { box-shadow: 0 0 0 3px var(--accent-soft); }
 .editor-actions { display: grid; gap: 8px; grid-template-columns: 1fr 1fr; }
+.paint-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.editor-colorbar .editor-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.editor-colorbar .editor-actions button { white-space: nowrap; }
+.editor-layers { border-left: 1px solid var(--line); grid-area: layers; overflow: auto; padding: 18px; }
+.editor-layers section { display: grid; gap: 10px; }
 .layer-list { display: grid; gap: 5px; list-style: none; margin: 0; max-height: 340px; overflow: auto; padding: 0; }
+.layer-list li { display: flex; gap: 4px; }
 .layer-list button { align-items: center; background: transparent; color: var(--text); display: flex; gap: 8px; justify-content: flex-start; text-align: left; width: 100%; }
+.layer-list li > button:first-child { flex: 1; }
+.layer-list .layer-visibility { flex: 0 0 34px; justify-content: center; padding: 6px; }
 .layer-list li.selected button { background: var(--accent-soft); color: var(--accent-dark); }
 .layer-list span { background: var(--layer-color); border: 1px solid var(--line); border-radius: 3px; height: 15px; width: 15px; }
-.editor-workspace { background: repeating-conic-gradient(#f5f5f5 0 25%, #e7e7e7 0 50%) 50% / 20px 20px; display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
+.editor-workspace { background: repeating-conic-gradient(#f5f5f5 0 25%, #e7e7e7 0 50%) 50% / 20px 20px; display: grid; grid-area: canvas; grid-template-rows: auto minmax(0, 1fr); min-width: 0; }
 .canvas-toolbar { align-items: center; background: var(--panel); border-bottom: 1px solid var(--line); display: flex; gap: 8px; padding: 9px 12px; }
 .canvas-toolbar output { min-width: 52px; text-align: center; }
 .canvas-toolbar #selection-label { color: var(--muted); font-size: 13px; margin-left: auto; }
 .editor-canvas { align-items: center; display: flex; justify-content: center; min-height: 540px; overflow: auto; padding: 42px; }
-.editor-artboard { background: white; box-shadow: 0 8px 26px rgb(0 0 0 / .18); max-width: 100%; transform-origin: center; }
+.editor-artboard { background: transparent; box-shadow: 0 8px 26px rgb(0 0 0 / .18); max-width: 100%; transform-origin: center; }
 .editor-artboard svg { display: block; height: auto; max-height: 580px; max-width: 100%; width: auto; }
 .editor-artboard .svg-fill-area { pointer-events: all; }
 .editor-json { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; }
@@ -607,8 +615,9 @@ dd { margin: 0; }
   .nav-menu { position: static; box-shadow: none; margin-top: 6px; }
   .page-head, .detail-layout { display: grid; }
   .decal-build-layout { grid-template-columns: 1fr; }
-  .svg-editor { grid-template-columns: 1fr; }
-  .editor-sidebar { border-bottom: 1px solid var(--line); border-right: 0; }
+  .svg-editor { grid-template-areas: "paint" "canvas" "layers"; grid-template-columns: 1fr; grid-template-rows: auto minmax(380px, 1fr) auto; }
+  .editor-colorbar { align-items: flex-start; }
+  .editor-layers { border-left: 0; border-top: 1px solid var(--line); }
   .editor-titlebar { align-items: stretch; flex-direction: column; }
   .editor-canvas { min-height: 380px; padding: 20px; }
   .crop-layout { grid-template-columns: 1fr; }

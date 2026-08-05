@@ -1,7 +1,5 @@
 Lets hide the Logout, Color Scheme selector, and Light/Dark mode buttons in a hamburger menu button. This should expand to show those options. The hamburger menu button should stay on the right side.
 
-
-
 Move the "Administration" button from under AI Settings to the hamburger menu. Also rename it to "Admin"
 Move the "Settings" button from under the "Collections" menu button to the new hamburger menu to the new "Admin" option in the hamburger menu
 

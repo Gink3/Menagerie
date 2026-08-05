@@ -649,16 +649,17 @@ def sanitize_svg(raw_svg):
     root_tag = root.tag.rsplit("}", 1)[-1] if isinstance(root.tag, str) else ""
     if root_tag != "svg":
         raise ValueError("The uploaded XML document is not an SVG (its root element must be <svg>).")
-    allowed_tags = {"svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "title", "desc", "defs", "linearGradient", "radialGradient", "stop", "use"}
+    allowed_tags = {"svg", "g", "path", "rect", "circle", "ellipse", "line", "polyline", "polygon", "title", "desc", "defs", "linearGradient", "radialGradient", "stop", "use", "image"}
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1] if isinstance(element.tag, str) else ""
         if tag not in allowed_tags:
             raise ValueError("SVG contains an unsupported element.")
         for attribute, value in element.attrib.items():
             name = attribute.rsplit("}", 1)[-1].lower()
-            if name.startswith("on") or name in {"href", "xlink:href"} and not value.startswith("#"):
+            is_embedded_png = tag == "image" and name in {"href", "xlink:href"} and value.startswith("data:image/png;base64,")
+            if name.startswith("on") or name in {"href", "xlink:href"} and not value.startswith("#") and not is_embedded_png:
                 raise ValueError("SVG contains an unsafe attribute.")
-            if "javascript:" in value.lower() or "data:" in value.lower():
+            if "javascript:" in value.lower() or "data:" in value.lower() and not is_embedded_png:
                 raise ValueError("SVG contains an unsafe URL.")
     # Preserve the normal SVG namespace. Without this, ElementTree emits an
     # ns0: prefix which browsers can re-serialize into an invalid editor SVG.
@@ -791,14 +792,54 @@ def save_heraldry_svg(raw_svg):
 
 def black_outline_svg(raw_svg):
     root = ET.fromstring(raw_svg)
-    fillable_tags = {"path", "rect", "circle", "ellipse", "polygon", "polyline"}
+    fillable_tags = {"path", "rect", "circle", "ellipse", "polygon", "polyline", "line"}
+
+    def style_value(style, name):
+        for declaration in style.split(";"):
+            if ":" not in declaration:
+                continue
+            key, value = declaration.split(":", 1)
+            if key.strip().lower() == name:
+                return value.strip().lower()
+        return None
+
+    def is_black(value):
+        return value in {"black", "#000", "#000000", "rgb(0,0,0)", "rgb(0, 0, 0)"}
+
     for element in root.iter():
         tag = element.tag.rsplit("}", 1)[-1] if isinstance(element.tag, str) else ""
         if tag in fillable_tags:
-            element.set("fill", "none")
+            # Keep intentional solid-black artwork (such as a shield frame).
+            # Other filled areas become transparent so they can be painted later.
+            style = element.get("style", "")
+            explicit_fill = style_value(style, "fill") or (element.get("fill") or "").strip().lower()
+            explicit_stroke = style_value(style, "stroke") or (element.get("stroke") or "").strip().lower()
+            keep_black_fill = tag != "line" and (
+                is_black(explicit_fill)
+                or (not explicit_fill and not explicit_stroke)
+            )
+            # Inline style declarations outrank SVG attributes in browsers; strip
+            # their paint values before applying the normalized black scheme.
+            retained = [part for part in style.split(";") if part.strip() and not part.strip().lower().startswith(("fill:", "stroke:", "stroke-width:"))]
+            if retained:
+                element.set("style", ";".join(retained))
+            else:
+                element.attrib.pop("style", None)
+            element.set("fill", "#000000" if keep_black_fill else "none")
             element.set("stroke", "#000000")
             if not element.get("stroke-width"):
                 element.set("stroke-width", "2")
+    ET.register_namespace("", "http://www.w3.org/2000/svg")
+    return ET.tostring(root, encoding="unicode")
+
+
+def svg_with_base_layer(raw_svg):
+    """Remove legacy full-canvas paint layers before opening the vector editor."""
+    root = ET.fromstring(raw_svg)
+    for parent in root.iter():
+        for child in list(parent):
+            if child.attrib.get("id") == "decal-base-layer":
+                parent.remove(child)
     ET.register_namespace("", "http://www.w3.org/2000/svg")
     return ET.tostring(root, encoding="unicode")
 
@@ -2483,7 +2524,8 @@ def edit_heraldry(design_id):
     initial_definition = json.loads(design["definition"])
     if not initial_definition.get("svg_markup"):
         initial_definition["svg_markup"] = heraldry_svg(initial_definition, design, initial_definition.get("elements", []))
-    return render_template("heraldry_form.html", design=design, designs=[], initial_definition=initial_definition, editor_svg=heraldry_svg(initial_definition, design, initial_definition.get("elements", [])), is_new_upload=request.args.get("new_upload") == "1")
+    editor_svg = svg_with_base_layer(heraldry_svg(initial_definition, design, initial_definition.get("elements", [])))
+    return render_template("heraldry_form.html", design=design, designs=[], initial_definition=initial_definition, editor_svg=editor_svg, is_new_upload=request.args.get("new_upload") == "1")
 
 
 @app.route("/heraldry/<int:design_id>/export.svg")
