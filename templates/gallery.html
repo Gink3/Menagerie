@@ -36,6 +36,7 @@
           <details class="tile-menu">
             <summary aria-label="Image menu">&vellip;</summary>
             <a href="{{ url_for('item_detail', item_id=item.id) }}">Item images</a>
+            {% for image in item.images %}<a href="{{ url_for('image_settings', image_id=image.id) }}">Frame {{ image.original_name }}</a>{% endfor %}
           </details>
         </div>
         <span class="tile-resize-handle east" data-resize="east" aria-hidden="true"></span>

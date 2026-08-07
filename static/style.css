@@ -434,10 +434,13 @@ th { background: var(--table-head); font-size: 11px; letter-spacing: .08em; text
 .gallery-detail-image, .crop-preview { aspect-ratio: 1 / 1; }
 .crop-preview {
   cursor: grab;
+  min-height: 360px;
   touch-action: none;
   user-select: none;
 }
 .crop-preview:active { cursor: grabbing; }
+.crop-controls { align-items: center; display: flex; gap: 12px; justify-content: space-between; }
+.crop-controls button { flex: 0 0 auto; }
 .cropped-image img, .gallery-detail-image img, .crop-preview img {
   -webkit-user-drag: none;
   height: 100%;

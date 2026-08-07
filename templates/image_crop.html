@@ -3,11 +3,12 @@
 <div class="page-head">
   <div>
     <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
-    <h1>Image settings</h1>
+    <h1>Gallery framing</h1>
+    <p>Position this photo exactly as it should appear in the gallery.</p>
   </div>
 </div>
 <section class="crop-layout">
-  <div class="crop-preview" id="crop-preview">
+  <div class="crop-preview" id="crop-preview" aria-label="Gallery crop preview">
     <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
   <div class="stack">
@@ -16,7 +17,9 @@
       <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
       <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
       <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
-      <p class="meta" id="crop-status">Saved automatically</p>
+      <div class="crop-controls"><span id="crop-zoom-value">{{ '%.2f'|format(image.crop_zoom) }}×</span><button class="subtle" id="reset-crop" type="button">Reset framing</button></div>
+      <p class="meta">Drag the photo to pan. Scroll to zoom. Changes save automatically.</p>
+      <p class="meta" id="crop-status" aria-live="polite">Saved automatically</p>
     </form>
     <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="panel stack">
       {{ csrf_field()|safe }}
@@ -32,6 +35,7 @@
   const cropY = document.querySelector("#crop-y");
   const cropZoom = document.querySelector("#crop-zoom");
   const cropStatus = document.querySelector("#crop-status");
+  const cropZoomValue = document.querySelector("#crop-zoom-value");
   let dragStart = null;
   let saveTimer = null;
 
@@ -39,6 +43,7 @@
     preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
     preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
     preview.style.transform = `scale(${cropZoom.value})`;
+    cropZoomValue.textContent = `${Number(cropZoom.value).toFixed(2)}×`;
   };
 
   const clamp = (value) => Math.max(0, Math.min(100, value));
@@ -100,6 +105,13 @@
   });
   preview.addEventListener("dragstart", (event) => { event.preventDefault(); });
   cropZoom.addEventListener("input", () => {
+    updateCropPreview();
+    queueSaveCrop();
+  });
+  document.querySelector("#reset-crop").addEventListener("click", () => {
+    cropX.value = 50;
+    cropY.value = 50;
+    cropZoom.value = 1;
     updateCropPreview();
     queueSaveCrop();
   });

@@ -32,7 +32,7 @@
             <div class="image-drag-handle" aria-hidden="true">Drag to reorder</div>
             <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
             <label class="image-order">Order<input name="gallery_position_{{ image.id }}" type="number" min="1" value="{{ image.gallery_position + 1 }}" {% if not image.gallery_enabled %}disabled{% endif %}></label>
-            <a href="{{ url_for('image_settings', image_id=image.id) }}">Crop</a>
+            <a href="{{ url_for('image_settings', image_id=image.id) }}">Frame for gallery</a>
           </figcaption>
         </figure>
       {% else %}
