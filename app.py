@@ -24,6 +24,8 @@ from flask import (
     session,
     url_for,
 )
+import bleach
+from markdown import markdown
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 from werkzeug.utils import secure_filename
@@ -33,6 +35,7 @@ BASE_DIR = Path(__file__).resolve().parent
 ASSET_DIR = BASE_DIR / "assets"
 DATA_DIR = Path(os.environ.get("MENAGERIE_DATA_DIR", BASE_DIR / "data"))
 UPLOAD_DIR = DATA_DIR / "uploads"
+WIKI_UPLOAD_DIR = UPLOAD_DIR / "wiki"
 DATABASE = DATA_DIR / "menagerie.sqlite"
 ALLOWED_IMAGE_EXTENSIONS = {"avif", "gif", "jpeg", "jpg", "png", "webp"}
 ROLES = {"admin", "collector", "viewer"}
@@ -42,7 +45,6 @@ CAPABILITIES = {
     "upload_svg": "Upload SVG assets",
     "manage_symbols": "Manage symbols",
     "manage_heraldry": "Manage heraldry",
-    "manage_lineage": "Manage lineage",
     "edit_wiki": "Edit wiki pages",
     "admin_ai": "Administer AI workflows",
     "deploy_models": "Deploy AI models",
@@ -74,6 +76,7 @@ def get_db():
     if "db" not in g:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        WIKI_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
         g.db = sqlite3.connect(DATABASE)
         g.db.row_factory = sqlite3.Row
         g.db.execute("pragma foreign_keys = on")
@@ -552,6 +555,19 @@ def migration_012_decal_templates(db):
     db.execute("insert or ignore into decal_templates (name, svg_markup) values ('Donut decal', ?)", (markup,))
 
 
+def migration_013_wiki_images(db):
+    db.execute(
+        """create table if not exists wiki_images (
+            id integer primary key autoincrement,
+            page_id integer not null references wiki_pages(id) on delete cascade,
+            filename text not null unique,
+            original_name text not null,
+            uploaded_by integer references users(id),
+            created_at text not null default current_timestamp
+        )"""
+    )
+
+
 MIGRATIONS = (
     (1, "foundation", migration_001_foundation),
     (2, "symbol_atlas", migration_002_symbol_atlas),
@@ -565,6 +581,7 @@ MIGRATIONS = (
     (10, "default_decal", migration_010_default_decal),
     (11, "refresh_default_decal", migration_011_refresh_default_decal),
     (12, "decal_templates", migration_012_decal_templates),
+    (13, "wiki_images", migration_013_wiki_images),
 )
 
 
@@ -890,6 +907,7 @@ def init_db():
             username text not null unique,
             password_hash text not null,
             role text not null default 'collector',
+            theme text not null default 'classic-dark',
             created_at text not null default current_timestamp
         );
 
@@ -971,6 +989,9 @@ def init_db():
         );
         """
     )
+    user_columns = [row["name"] for row in db.execute("pragma table_info(users)").fetchall()]
+    if "theme" not in user_columns:
+        db.execute("alter table users add column theme text not null default 'classic-dark'")
     columns = [row["name"] for row in db.execute("pragma table_info(collections)").fetchall()]
     if "owner_id" not in columns:
         db.execute("alter table collections add column owner_id integer references users(id)")
@@ -1081,6 +1102,12 @@ def load_current_user():
         g.user = get_db().execute("select * from users where id = ?", (user_id,)).fetchone()
     if request.method == "POST" and not valid_csrf_token(request.form.get("csrf_token") or request.headers.get("X-CSRFToken")):
         abort(400)
+
+
+@app.before_request
+def retire_lineage_routes():
+    if request.path == "/lineage" or request.path.startswith(("/people", "/houses")):
+        abort(404)
 
 
 @app.after_request
@@ -1701,11 +1728,25 @@ def collections_index():
 @app.route("/settings", methods=("GET", "POST"))
 @login_required
 def user_settings():
+    theme_choices = {
+        "classic-dark": "Classic dark",
+        "classic-light": "Classic light",
+        "museum-dark": "Museum dark",
+        "museum-light": "Museum light",
+    }
+    user = get_db().execute("select * from users where id = ?", (g.user["id"],)).fetchone()
     if request.method == "POST":
+        if request.form.get("action") == "theme":
+            theme = request.form.get("theme", "")
+            if theme not in theme_choices:
+                abort(400)
+            get_db().execute("update users set theme = ? where id = ?", (theme, g.user["id"]))
+            get_db().commit()
+            flash("Theme updated.", "success")
+            return redirect(url_for("user_settings"))
         current_password = request.form.get("current_password", "")
         new_password = request.form.get("new_password", "")
         confirm_password = request.form.get("confirm_password", "")
-        user = get_db().execute("select * from users where id = ?", (g.user["id"],)).fetchone()
         if not check_password_hash(user["password_hash"], current_password):
             flash("Current password is incorrect.", "error")
         elif len(new_password) < 8:
@@ -1720,7 +1761,34 @@ def user_settings():
             get_db().commit()
             flash("Password updated.", "success")
             return redirect(url_for("user_settings"))
-    return render_template("user_settings.html")
+    return render_template("user_settings.html", theme_choices=theme_choices, selected_theme=user["theme"] if user["theme"] in theme_choices else "classic-dark")
+
+
+@app.route("/settings/accounts/new", methods=("GET", "POST"))
+@admin_required
+def create_account():
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm_password = request.form.get("confirm_password", "")
+        role = normalize_role(request.form.get("role", "collector"))
+        if not username:
+            flash("Username is required.", "error")
+        elif username_exists(username) or application_exists(username):
+            flash("That username is already taken or awaiting approval.", "error")
+        elif len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+        elif password != confirm_password:
+            flash("Passwords do not match.", "error")
+        else:
+            get_db().execute(
+                "insert into users (username, password_hash, role) values (?, ?, ?)",
+                (username, generate_password_hash(password), role),
+            )
+            get_db().commit()
+            flash(f"Account created for {username}.", "success")
+            return redirect(url_for("user_settings"))
+    return render_template("create_account.html")
 
 
 @app.route("/gallery/me")
@@ -1791,6 +1859,8 @@ def image_settings(image_id):
         if is_background_request():
             return jsonify({"ok": True})
         flash("Image settings saved.", "success")
+        if request.form.get("return_to_gallery"):
+            return redirect(url_for("my_gallery"))
         return redirect(url_for("item_detail", item_id=image["item_id"]))
     return render_template("image_crop.html", image=image)
 
@@ -1809,6 +1879,30 @@ def delete_image(image_id):
         pass
     flash("Image deleted.", "success")
     return redirect(url_for("item_detail", item_id=image["item_id"]))
+
+
+@app.route("/items/<int:item_id>/images/delete", methods=("POST",))
+@login_required
+def delete_selected_item_image(item_id):
+    item = get_item(item_id)
+    collection = get_collection(item["collection_id"])
+    if not user_can_manage_collection(collection):
+        abort(403)
+    try:
+        image_id = int(request.form.get("image_id", ""))
+    except (TypeError, ValueError):
+        abort(400)
+    image = get_db().execute("select * from item_images where id = ? and item_id = ?", (image_id, item_id)).fetchone()
+    if image is None:
+        abort(404)
+    get_db().execute("delete from item_images where id = ?", (image["id"],))
+    get_db().commit()
+    try:
+        (UPLOAD_DIR / image["filename"]).unlink()
+    except FileNotFoundError:
+        pass
+    flash("Image deleted.", "success")
+    return redirect(url_for("item_detail", item_id=item_id))
 
 
 @app.route("/images/<int:image_id>/gallery", methods=("POST",))
@@ -2093,6 +2187,7 @@ def item_detail(item_id):
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))
     }
+    fields.sort(key=lambda field: (not bool(str(values.get(field["id"], "")).strip()), field["position"], field["id"]))
     images = db.execute(
         """
         select * from item_images
@@ -2681,7 +2776,75 @@ def new_house():
     return redirect(url_for("lineage_index"))
 
 
-WIKI_PAGE_TYPES = ("person", "house", "symbol", "heraldry", "organization", "event", "location", "collection_item", "general")
+WIKI_PAGE_TYPES = ("general",)
+WIKI_LINK_PATTERN = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+WIKI_TASK_PATTERN = re.compile(r"^\s*(?:[-*+]\s*)?\[([ xX])\]\s+(.+)$", re.MULTILINE)
+WIKI_LIST_PATTERN = re.compile(r"^\s*[-*+]\s+")
+
+
+def wiki_link_targets(body):
+    db = get_db()
+    pages = db.execute("select id, slug, title from wiki_pages").fetchall()
+    by_slug = {page["slug"]: page for page in pages}
+    by_title = {page["title"].casefold(): page for page in pages}
+    targets = []
+    for match in WIKI_LINK_PATTERN.finditer(body or ""):
+        target = match.group(1).strip()
+        page = by_slug.get(target) or by_title.get(target.casefold())
+        if page:
+            targets.append(page)
+    return targets
+
+
+def sync_wiki_page_links(page_id, body):
+    db = get_db()
+    db.execute("delete from wiki_page_links where source_page_id = ?", (page_id,))
+    for target in {page["id"]: page for page in wiki_link_targets(body)}.values():
+        if target["id"] != page_id:
+            db.execute(
+                "insert into wiki_page_links (source_page_id, target_page_id, relationship_type) values (?, ?, 'mentioned')",
+                (page_id, target["id"]),
+            )
+
+
+def render_wiki_markdown(body):
+    def replace_link(match):
+        target = match.group(1).strip()
+        label = (match.group(2) or target).strip()
+        pages = wiki_link_targets(match.group(0))
+        if pages:
+            return f"[{label}]({url_for('wiki_page', slug=pages[0]['slug'])})"
+        # Page-browser links use a canonical slug. Keep those usable even when
+        # a page has been renamed after the link was copied.
+        if re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", target):
+            return f"[{label}]({url_for('wiki_page', slug=target)})"
+        return label
+
+    source = WIKI_LINK_PATTERN.sub(replace_link, body or "")
+    source = WIKI_TASK_PATTERN.sub(
+        lambda match: f'<div class="wiki-task"><input type="checkbox" disabled{" checked" if match.group(1).lower() == "x" else ""}> {match.group(2)}</div>',
+        source,
+    )
+    lines = source.splitlines()
+    normalized = []
+    previous_was_list = False
+    for line in lines:
+        is_list = bool(WIKI_LIST_PATTERN.match(line))
+        if is_list and not previous_was_list and normalized and normalized[-1].strip():
+            normalized.append("")
+        if not is_list and previous_was_list and line.strip():
+            normalized.append("")
+        normalized.append(line)
+        previous_was_list = is_list
+    source = "\n".join(normalized)
+    rendered = markdown(source, extensions=("extra", "sane_lists", "nl2br"))
+    return bleach.clean(
+        rendered,
+        tags={"a", "abbr", "blockquote", "br", "code", "del", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "img", "input", "li", "ol", "p", "pre", "strong", "table", "tbody", "td", "th", "thead", "tr", "ul"},
+        attributes={"a": ["href", "title"], "div": ["class"], "img": ["src", "alt", "title"], "input": ["type", "checked", "disabled"], "th": ["align"], "td": ["align"]},
+        protocols={"http", "https", "mailto"},
+        strip=True,
+    )
 
 
 def wiki_slug(title):
@@ -2716,7 +2879,7 @@ def wiki_index():
         pages = db.execute("select * from wiki_pages where title like ? or body like ? order by title", (f"%{query}%", f"%{query}%")).fetchall()
     else:
         pages = db.execute("select * from wiki_pages order by title").fetchall()
-    return render_template("wiki.html", pages=pages, query=query, page_types=WIKI_PAGE_TYPES)
+    return render_template("wiki.html", pages=pages, query=query)
 
 
 @app.route("/wiki/new", methods=("GET", "POST"))
@@ -2724,20 +2887,21 @@ def wiki_index():
 def new_wiki_page():
     if request.method == "POST":
         title = request.form.get("title", "").strip()
-        page_type = request.form.get("page_type", "general")
-        if not title or page_type not in WIKI_PAGE_TYPES:
-            flash("A title and valid page type are required.", "error")
+        if not title:
+            flash("A title is required.", "error")
         else:
             db = get_db()
             body = request.form.get("body", "").strip()
-            knowledge_id = create_knowledge_object(f"wiki_{page_type}", title, g.user["id"])
+            knowledge_id = create_knowledge_object("wiki_page", title, g.user["id"])
             slug = unique_wiki_slug(title)
-            cursor = db.execute("insert into wiki_pages (knowledge_object_id, slug, page_type, title, body, created_by) values (?, ?, ?, ?, ?, ?)", (knowledge_id, slug, page_type, title, body, g.user["id"]))
+            cursor = db.execute("insert into wiki_pages (knowledge_object_id, slug, page_type, title, body, created_by) values (?, ?, 'general', ?, ?, ?)", (knowledge_id, slug, title, body, g.user["id"]))
             page_id = cursor.lastrowid
             db.execute("insert into wiki_revisions (page_id, revision_number, title, body, created_by) values (?, 1, ?, ?, ?)", (page_id, title, body, g.user["id"]))
+            sync_wiki_page_links(page_id, body)
             db.commit()
             return redirect(url_for("wiki_page", slug=slug))
-    return render_template("wiki_form.html", page=None, page_types=WIKI_PAGE_TYPES)
+    pages = get_db().execute("select slug, title from wiki_pages order by title").fetchall()
+    return render_template("wiki_form.html", page=None, images=[], pages=pages)
 
 
 @app.route("/wiki/<slug>")
@@ -2747,27 +2911,28 @@ def wiki_page(slug):
     db = get_db()
     links = db.execute("select wiki_pages.slug, wiki_pages.title, wiki_page_links.relationship_type from wiki_pages join wiki_page_links on wiki_pages.id = wiki_page_links.target_page_id where wiki_page_links.source_page_id = ? order by wiki_pages.title", (page["id"],)).fetchall()
     backlinks = db.execute("select wiki_pages.slug, wiki_pages.title, wiki_page_links.relationship_type from wiki_pages join wiki_page_links on wiki_pages.id = wiki_page_links.source_page_id where wiki_page_links.target_page_id = ? order by wiki_pages.title", (page["id"],)).fetchall()
-    categories = db.execute("select category from wiki_page_categories where page_id = ? order by category", (page["id"],)).fetchall()
-    pages = db.execute("select id, title from wiki_pages where id <> ? order by title", (page["id"],)).fetchall()
-    return render_template("wiki_page.html", page=page, links=links, backlinks=backlinks, categories=categories, pages=pages)
+    return render_template("wiki_page.html", page=page, rendered_body=render_wiki_markdown(page["body"]), links=links, backlinks=backlinks)
 
 
 @app.route("/wiki/<slug>/edit", methods=("GET", "POST"))
 @capability_required("edit_wiki")
 def edit_wiki_page(slug):
     page = get_wiki_page(slug)
+    db = get_db()
     if request.method == "POST":
-        db = get_db()
         title = request.form.get("title", "").strip()
         body = request.form.get("body", "").strip()
         revision = db.execute("select coalesce(max(revision_number), 0) + 1 from wiki_revisions where page_id = ?", (page["id"],)).fetchone()[0]
         new_slug = unique_wiki_slug(title, page["id"])
         db.execute("update wiki_pages set slug = ?, title = ?, body = ?, updated_at = current_timestamp where id = ?", (new_slug, title, body, page["id"]))
         db.execute("insert into wiki_revisions (page_id, revision_number, title, body, created_by) values (?, ?, ?, ?, ?)", (page["id"], revision, title, body, g.user["id"]))
+        sync_wiki_page_links(page["id"], body)
         db.commit()
         flash("Wiki page saved.", "success")
         return redirect(url_for("wiki_page", slug=new_slug))
-    return render_template("wiki_form.html", page=page, page_types=WIKI_PAGE_TYPES)
+    images = db.execute("select * from wiki_images where page_id = ? order by id desc", (page["id"],)).fetchall()
+    pages = db.execute("select slug, title from wiki_pages where id <> ? order by title", (page["id"],)).fetchall()
+    return render_template("wiki_form.html", page=page, images=images, pages=pages)
 
 
 @app.route("/wiki/<slug>/history")
@@ -2778,18 +2943,34 @@ def wiki_history(slug):
     return render_template("wiki_history.html", page=page, revisions=revisions)
 
 
-@app.route("/wiki/<slug>/links", methods=("POST",))
+@app.route("/wiki/<slug>/images", methods=("POST",))
 @capability_required("edit_wiki")
-def add_wiki_link(slug):
+def upload_wiki_image(slug):
     page = get_wiki_page(slug)
-    target = get_db().execute("select id, slug from wiki_pages where id = ?", (request.form.get("target_page_id"),)).fetchone()
-    if target is None or target["id"] == page["id"]:
-        abort(400)
-    relationship = request.form.get("relationship_type", "related").strip() or "related"
-    get_db().execute("insert or ignore into wiki_page_links (source_page_id, target_page_id, relationship_type) values (?, ?, ?)", (page["id"], target["id"], relationship))
-    get_db().commit()
-    flash("Wiki relationship saved.", "success")
-    return redirect(url_for("wiki_page", slug=slug))
+    image = request.files.get("image")
+    if image is None or not image.filename:
+        flash("Choose an image to upload.", "error")
+    elif not allowed_image(image.filename):
+        flash("Choose a PNG, JPEG, GIF, WebP, or AVIF image.", "error")
+    else:
+        original_name = secure_filename(image.filename)
+        extension = original_name.rsplit(".", 1)[1].lower()
+        filename = f"{uuid.uuid4().hex}.{extension}"
+        WIKI_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        image.save(WIKI_UPLOAD_DIR / filename)
+        get_db().execute("insert into wiki_images (page_id, filename, original_name, uploaded_by) values (?, ?, ?, ?)", (page["id"], filename, original_name, g.user["id"]))
+        get_db().commit()
+        flash("Image uploaded. Copy its Markdown into the page.", "success")
+    return redirect(url_for("edit_wiki_page", slug=slug))
+
+
+@app.route("/wiki/images/<filename>")
+@login_required
+def wiki_image_file(filename):
+    image = get_db().execute("select 1 from wiki_images where filename = ?", (filename,)).fetchone()
+    if image is None:
+        abort(404)
+    return send_from_directory(WIKI_UPLOAD_DIR, filename)
 
 
 ANNOTATION_TYPES = {"rectangle", "polygon", "ellipse", "point", "freehand"}

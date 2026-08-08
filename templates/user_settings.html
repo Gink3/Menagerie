@@ -6,8 +6,28 @@
     <p>{{ g.user.username }} · {{ g.user.role }}</p>
   </div>
 </div>
+{% if g.user.role == 'admin' %}
+<section class="panel stack">
+  <div>
+    <h2>Accounts</h2>
+    <p class="meta">Create a new account for a collector, viewer, or administrator.</p>
+  </div>
+  <a class="button" href="{{ url_for('create_account') }}">Create account</a>
+</section>
+{% endif %}
 <form method="post" class="panel stack">
   {{ csrf_field()|safe }}
+  <input name="action" type="hidden" value="theme">
+  <label>Theme
+    <select name="theme">
+      {% for value, label in theme_choices.items() %}<option value="{{ value }}" {% if value == selected_theme %}selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+  </label>
+  <button type="submit">Save theme</button>
+</form>
+<form method="post" class="panel stack">
+  {{ csrf_field()|safe }}
+  <input name="action" type="hidden" value="password">
   <label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>
   <label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="8" required></label>
   <label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>

@@ -1,1 +1,6 @@
-{% extends "base.html" %}{% block content %}<div class="page-head"><div><h1>Knowledge Wiki</h1><p>Connected pages for the people, symbols, heraldry, and collections in Menagerie.</p></div>{% if has_capability(g.user, 'edit_wiki') %}<a class="button" href="{{ url_for('new_wiki_page') }}">New page</a>{% endif %}</div><form class="toolbar" method="get"><input name="q" value="{{ query }}" placeholder="Search pages"><button type="submit">Search</button></form><div class="collection-grid">{% for page in pages %}<a class="card" href="{{ url_for('wiki_page', slug=page.slug) }}"><h2>{{ page.title }}</h2><p>{{ page.page_type|replace('_', ' ')|title }}</p></a>{% else %}<div class="empty">No wiki pages found.</div>{% endfor %}</div>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>Knowledge Wiki</h1><p>Markdown pages for your Menagerie reference material.</p></div>{% if has_capability(g.user, 'edit_wiki') %}<a class="button" href="{{ url_for('new_wiki_page') }}">New page</a>{% endif %}</div>
+<form class="toolbar" method="get"><input name="q" value="{{ query }}" placeholder="Search pages"><button type="submit">Search</button></form>
+<div class="collection-grid">{% for page in pages %}<a class="card" href="{{ url_for('wiki_page', slug=page.slug) }}"><h2>{{ page.title }}</h2><p>Updated {{ page.updated_at }}</p></a>{% else %}<div class="empty">No wiki pages found.</div>{% endfor %}</div>
+{% endblock %}

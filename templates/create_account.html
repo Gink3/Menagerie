@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <a href="{{ url_for('user_settings') }}">Settings</a>
+    <h1>Create account</h1>
+    <p>Create a new Menagerie user account.</p>
+  </div>
+</div>
+<form method="post" class="panel stack">
+  {{ csrf_field()|safe }}
+  <label>Username<input name="username" autocomplete="username" required></label>
+  <label>Role<select name="role"><option value="collector">Collector</option><option value="viewer">Viewer</option><option value="admin">Administrator</option></select></label>
+  <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label>
+  <label>Confirm password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>
+  <div class="actions"><button type="submit">Create account</button><a class="button subtle" href="{{ url_for('user_settings') }}">Cancel</a></div>
+</form>
+{% endblock %}

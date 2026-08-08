@@ -20,7 +20,8 @@ python -m venv .venv
 pip install -r requirements.txt
 $env:MENAGERIE_SECRET_KEY="change-this"
 $env:MENAGERIE_ADMIN_USERNAME="admin"
-$env:MENAGERIE_ADMIN_PASSWORD="change-this-password"
+$env:MENAGERIE_ADMIN_PASSWORD="admin123"
+$env:MENAGERIE_ALLOW_INSECURE_DEFAULTS="1"
 python app.py
 ```
 
@@ -42,7 +43,8 @@ Run it locally:
 docker run --rm -p 8000:8000 `
   -e MENAGERIE_SECRET_KEY="change-this" `
   -e MENAGERIE_ADMIN_USERNAME="admin" `
-  -e MENAGERIE_ADMIN_PASSWORD="change-this-password" `
+  -e MENAGERIE_ADMIN_PASSWORD="admin123" `
+  -e MENAGERIE_ALLOW_INSECURE_DEFAULTS="1" `
   -v menagerie-data:/app/data `
   menagerie:latest
 ```

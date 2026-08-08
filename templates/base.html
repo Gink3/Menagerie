@@ -1,5 +1,6 @@
 <!doctype html>
-<html lang="en" data-theme="dark" data-scheme="classic">
+{% set selected_theme = g.user.theme if g.user and g.user.theme in ('classic-dark', 'classic-light', 'museum-dark', 'museum-light') else 'classic-dark' %}
+<html lang="en" data-theme="{{ 'light' if selected_theme.endswith('-light') else 'dark' }}" data-scheme="{{ 'museum' if selected_theme.startswith('museum-') else 'classic' }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -15,22 +16,19 @@
       <span>Menagerie</span>
     </a>
     <nav aria-label="Main navigation">
-      <details class="nav-group"><summary>Galleries</summary><div class="nav-menu"><a href="{{ url_for('index') }}">Gallery</a><a href="{{ url_for('user_galleries') }}">User Galleries</a>{% if g.user %}<a href="{{ url_for('collections_index') }}">My Collections</a><a href="{{ url_for('my_gallery') }}">My Gallery</a>{% endif %}</div></details>
-      {% if g.user %}<details class="nav-group"><summary>Collections</summary><div class="nav-menu"><a href="{{ url_for('user_settings') }}">Settings</a><a href="{{ url_for('decal_templates_index') }}">Template Library</a><a href="{{ url_for('heraldry_index') }}">Decal Library</a><a href="{{ url_for('lineage_index') }}">Lineage</a><a href="{{ url_for('wiki_index') }}">Wiki</a></div></details>{% endif %}
-      {% if g.user and (has_capability(g.user, 'label_images') or has_capability(g.user, 'admin_ai') or g.user.role == 'admin') %}<details class="nav-group"><summary>AI Settings</summary><div class="nav-menu">{% if has_capability(g.user, 'label_images') %}<a href="{{ url_for('my_gallery') }}">Annotate</a>{% endif %}{% if has_capability(g.user, 'admin_ai') %}<a href="{{ url_for('ai_lab') }}">AI Lab</a>{% endif %}{% if g.user.role == 'admin' %}<a href="{{ url_for('metrics_dashboard') }}">Metrics</a><a href="{{ url_for('admin_users') }}">Administration</a>{% endif %}</div></details>{% endif %}
+      <details class="nav-group"><summary>Galleries</summary><div class="nav-menu"><a href="{{ url_for('index') }}">Gallery</a><a href="{{ url_for('user_galleries') }}">User Galleries</a>{% if g.user %}<a href="{{ url_for('my_gallery') }}">My Gallery</a>{% endif %}</div></details>
+      {% if g.user %}<details class="nav-group"><summary>Collections</summary><div class="nav-menu"><a href="{{ url_for('collections_index') }}">My Collections</a><a href="{{ url_for('decal_templates_index') }}">Template Library</a><a href="{{ url_for('heraldry_index') }}">Decal Library</a></div></details><a class="topnav-link" href="{{ url_for('wiki_index') }}">Wiki</a>{% endif %}
     </nav>
-    {% if g.user %}
-      <button class="theme-toggle" type="button" aria-pressed="false">Dark</button>
-      <button class="scheme-toggle" type="button" aria-pressed="false">Museum</button>
-      <form action="{{ url_for('logout') }}" method="post">
-        {{ csrf_field()|safe }}
-        <button class="link-button" type="submit">Log out</button>
-      </form>
-    {% else %}
-      <button class="theme-toggle" type="button" aria-pressed="false">Dark</button>
-      <button class="scheme-toggle" type="button" aria-pressed="false">Museum</button>
-      <a class="button" href="{{ url_for('login') }}">Log in</a>
-    {% endif %}
+    <details class="nav-group app-menu">
+      <summary aria-label="Open settings and account menu"><span aria-hidden="true">☰</span><span class="menu-label">Menu</span></summary>
+      <div class="nav-menu">
+        {% if g.user %}
+          <a href="{{ url_for('user_settings') }}">Settings</a>
+          {% if has_capability(g.user, 'label_images') or has_capability(g.user, 'admin_ai') or g.user.role == 'admin' %}<details class="menu-section"><summary>AI Settings</summary><div>{% if has_capability(g.user, 'label_images') %}<a href="{{ url_for('my_gallery') }}">Annotate</a>{% endif %}{% if has_capability(g.user, 'admin_ai') %}<a href="{{ url_for('ai_lab') }}">AI Lab</a>{% endif %}{% if g.user.role == 'admin' %}<a href="{{ url_for('metrics_dashboard') }}">Metrics</a><a href="{{ url_for('admin_users') }}">Administration</a>{% endif %}</div></details>{% endif %}
+        {% endif %}
+        {% if g.user %}<form action="{{ url_for('logout') }}" method="post">{{ csrf_field()|safe }}<button class="link-button" type="submit">Log out</button></form>{% else %}<a class="button" href="{{ url_for('login') }}">Log in</a>{% endif %}
+      </div>
+    </details>
   </header>
   <main id="main-content" class="shell {% block shell_class %}{% endblock %}">
     {% for category, message in get_flashed_messages(with_categories=true) %}
@@ -39,40 +37,6 @@
     {% block content %}{% endblock %}
   </main>
   <script>
-    const themeToggle = document.querySelector(".theme-toggle");
-    const schemeToggle = document.querySelector(".scheme-toggle");
-    const savedTheme = localStorage.getItem("menagerie-theme") || "dark";
-    const savedScheme = localStorage.getItem("menagerie-scheme") || "classic";
-    document.documentElement.dataset.theme = savedTheme;
-    document.documentElement.dataset.scheme = savedScheme;
-    if (themeToggle) {
-      const syncThemeToggle = () => {
-        const dark = document.documentElement.dataset.theme === "dark";
-        themeToggle.textContent = dark ? "Light" : "Dark";
-        themeToggle.setAttribute("aria-pressed", dark ? "true" : "false");
-      };
-      syncThemeToggle();
-      themeToggle.addEventListener("click", () => {
-        const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-        document.documentElement.dataset.theme = nextTheme;
-        localStorage.setItem("menagerie-theme", nextTheme);
-        syncThemeToggle();
-      });
-    }
-    if (schemeToggle) {
-      const syncSchemeToggle = () => {
-        const museum = document.documentElement.dataset.scheme === "museum";
-        schemeToggle.textContent = museum ? "Classic" : "Museum";
-        schemeToggle.setAttribute("aria-pressed", museum ? "true" : "false");
-      };
-      syncSchemeToggle();
-      schemeToggle.addEventListener("click", () => {
-        const nextScheme = document.documentElement.dataset.scheme === "museum" ? "classic" : "museum";
-        document.documentElement.dataset.scheme = nextScheme;
-        localStorage.setItem("menagerie-scheme", nextScheme);
-        syncSchemeToggle();
-      });
-    }
     document.querySelectorAll(".nav-group").forEach((group) => {
       group.addEventListener("toggle", () => {
         if (group.open) document.querySelectorAll(".nav-group").forEach((other) => { if (other !== group) other.open = false; });

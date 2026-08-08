@@ -1,35 +1,36 @@
 {% extends "base.html" %}
+{% block shell_class %}framing-shell{% endblock %}
 {% block content %}
-<div class="page-head">
-  <div>
-    <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
-    <h1>Gallery framing</h1>
-    <p>Position this photo exactly as it should appear in the gallery.</p>
-  </div>
-</div>
-<section class="crop-layout">
+<section class="framing-toolbar" aria-label="Gallery framing controls">
+  <form id="crop-form" method="post" class="framing-zoom-control">
+    {{ csrf_field()|safe }}
+    <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
+    <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
+    <label for="crop-zoom">Zoom</label>
+    <input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}">
+    <output id="crop-zoom-value" for="crop-zoom">{{ '%.2f'|format(image.crop_zoom) }}×</output>
+    <button class="subtle" id="reset-crop" type="button">Reset framing</button>
+    <span class="meta" id="crop-status" aria-live="polite">Saved automatically</span>
+    <button name="return_to_gallery" type="submit" value="1">Save</button>
+  </form>
+  <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="framing-delete-form">
+    {{ csrf_field()|safe }}
+    <button class="danger" type="submit">Delete image</button>
+  </form>
+</section>
+<header class="framing-titlebar">
+  <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
+  <h1>Gallery framing</h1>
+  <p>Drag to pan · Scroll to zoom · Changes save automatically</p>
+</header>
+<section class="framing-canvas">
   <div class="crop-preview" id="crop-preview" aria-label="Gallery crop preview">
     <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
-  </div>
-  <div class="stack">
-    <form method="post" class="panel stack">
-      {{ csrf_field()|safe }}
-      <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
-      <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
-      <label>Zoom<input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}"></label>
-      <div class="crop-controls"><span id="crop-zoom-value">{{ '%.2f'|format(image.crop_zoom) }}×</span><button class="subtle" id="reset-crop" type="button">Reset framing</button></div>
-      <p class="meta">Drag the photo to pan. Scroll to zoom. Changes save automatically.</p>
-      <p class="meta" id="crop-status" aria-live="polite">Saved automatically</p>
-    </form>
-    <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="panel stack">
-      {{ csrf_field()|safe }}
-      <button class="danger" type="submit">Delete image</button>
-    </form>
   </div>
 </section>
 <script>
   const cropBox = document.querySelector("#crop-preview");
-  const cropForm = document.querySelector(".crop-layout form");
+  const cropForm = document.querySelector("#crop-form");
   const preview = document.querySelector("#crop-preview-image");
   const cropX = document.querySelector("#crop-x");
   const cropY = document.querySelector("#crop-y");

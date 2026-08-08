@@ -1,1 +1,32 @@
-{% extends "base.html" %}{% block content %}<div class="page-head"><h1>{{ "Edit wiki page" if page else "New wiki page" }}</h1></div><form method="post" class="panel stack">{{ csrf_field()|safe }}<label>Title<input name="title" value="{{ page.title if page else '' }}" required></label><label>Page type<select name="page_type" {% if page %}disabled{% endif %}>{% for page_type in page_types %}<option value="{{ page_type }}" {% if page and page.page_type == page_type %}selected{% endif %}>{{ page_type|replace('_', ' ')|title }}</option>{% endfor %}</select></label><label>Body<textarea name="body" rows="18">{{ page.body if page else '' }}</textarea></label><button type="submit">Save page</button></form>{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head"><div><h1>{{ "Edit page" if page else "New wiki page" }}</h1><p>Write in Markdown. Link another page with <code>[[Page title]]</code> or <code>[[page-slug|link text]]</code>.</p></div>{% if page %}<a class="button subtle" href="{{ url_for('wiki_page', slug=page.slug) }}">View page</a>{% endif %}</div>
+<div class="wiki-editor-layout">
+  <form method="post" class="panel stack wiki-editor">
+    {{ csrf_field()|safe }}
+    <label>Title<input name="title" value="{{ page.title if page else '' }}" required></label>
+    <label>Markdown<textarea name="body" rows="24" placeholder="# Page title&#10;&#10;Write your page here.">{{ page.body if page else '' }}</textarea></label>
+    <button type="submit">Save page</button>
+  </form>
+  <aside class="panel stack wiki-editor-help">
+    <div><h2>Markdown</h2><p><code># Heading</code><br><code>**bold**</code><br><code>- Bullet</code><br><code>- [ ] Task</code><br><code>[link](https://example.com)</code><br><code>![image](URL)</code></p></div>
+    <div><h2>Wiki links</h2><p>Use a page title or slug: <code>[[Field Guide]]</code>. Add custom text with <code>[[field-guide|Read the guide]]</code>.</p></div>
+    <div><h2>Page browser</h2><p class="meta">Click a page to copy its wiki-link syntax.</p><div class="wiki-page-browser">{% for linked_page in pages %}<button class="subtle wiki-link-copy" type="button" data-wiki-link="[[{{ linked_page.slug }}|{{ linked_page.title }}]]">{{ linked_page.title }}</button>{% else %}<span class="meta">No other pages yet.</span>{% endfor %}</div></div>
+    {% if page %}
+      <div><h2>Upload image</h2><form method="post" action="{{ url_for('upload_wiki_image', slug=page.slug) }}" enctype="multipart/form-data" class="stack">{{ csrf_field()|safe }}<input name="image" type="file" accept="image/avif,image/gif,image/jpeg,image/png,image/webp" required><button type="submit">Upload image</button></form></div>
+      <div><h2>Page images</h2><ul class="wiki-image-list">{% for image in images %}<li><code>![{{ image.original_name }}]({{ url_for('wiki_image_file', filename=image.filename) }})</code></li>{% else %}<li>No images uploaded yet.</li>{% endfor %}</ul></div>
+    {% endif %}
+  </aside>
+</div>
+<script>
+  document.querySelectorAll(".wiki-link-copy").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const link = button.dataset.wikiLink;
+      try { await navigator.clipboard.writeText(link); } catch { window.prompt("Copy this wiki link:", link); }
+      const original = button.textContent;
+      button.textContent = "Copied";
+      setTimeout(() => { button.textContent = original; }, 900);
+    });
+  });
+</script>
+{% endblock %}
