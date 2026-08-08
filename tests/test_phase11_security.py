@@ -1,11 +1,13 @@
 import unittest
 
 from flask import session
+from werkzeug.datastructures import MultiDict
 
 from app import (
     add_security_headers,
     app,
     clear_stale_login_session,
+    form_field_definitions,
     sanitize_svg,
     valid_annotation_geometry,
     valid_json_object,
@@ -35,6 +37,17 @@ class Phase11SecurityTests(unittest.TestCase):
     def test_wiki_slugs_are_stable_and_safe(self):
         self.assertEqual(wiki_slug("House of Dawn!"), "house-of-dawn")
         self.assertEqual(wiki_slug("!!!"), "page")
+
+    def test_collection_field_definitions_keep_names_and_types_paired(self):
+        fields = form_field_definitions(MultiDict([
+            ("field_name", "Manufacturer"),
+            ("field_type", "text"),
+            ("field_name", "Complete"),
+            ("field_type", "checkbox"),
+            ("field_name", ""),
+            ("field_type", "date"),
+        ]))
+        self.assertEqual(fields, [("Manufacturer", "text"), ("Complete", "checkbox")])
 
     def test_html_responses_are_not_cached(self):
         with app.test_request_context("/login"):

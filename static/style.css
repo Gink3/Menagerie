@@ -260,6 +260,12 @@ label { color: var(--muted); display: grid; gap: 6px; font-size: 14px; font-weig
   grid-column: 1 / -1;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
 }
+.collection-fields { border: 0; margin: 0; padding: 0; }
+.collection-fields legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
+.collection-field-list { display: grid; gap: 10px; margin: 12px 0; }
+.collection-field-row { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(180px, .45fr); }
+.collection-field-row label { margin: 0; }
+@media (max-width: 540px) { .collection-field-row { grid-template-columns: 1fr; } }
 .table-wrap { background: var(--panel); border: 1px solid var(--line); overflow: auto; }
 table { border-collapse: collapse; min-width: 760px; width: 100%; }
 th, td { border-bottom: 1px solid var(--line); padding: 12px 14px; text-align: left; vertical-align: top; }

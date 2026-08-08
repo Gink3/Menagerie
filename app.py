@@ -1511,6 +1511,23 @@ def parse_field_definition(line):
     return name, normalize_field_type(raw_type if separator else "text")
 
 
+def form_field_definitions(form):
+    """Return the non-empty field definitions submitted by the collection form."""
+    field_names = form.getlist("field_name")
+    field_types = form.getlist("field_type")
+    if field_names:
+        return [
+            (name.strip(), normalize_field_type(field_types[position] if position < len(field_types) else "text"))
+            for position, name in enumerate(field_names)
+            if name.strip()
+        ]
+    return [
+        parse_field_definition(field_line)
+        for field_line in form.get("fields", "").splitlines()
+        if parse_field_definition(field_line)[0]
+    ]
+
+
 def field_form_value(field, form):
     if field["field_type"] == "checkbox":
         return "true" if form.get(f"field_{field['id']}") else "false"
@@ -2024,16 +2041,19 @@ def new_collection():
             "insert into collections (name, description, owner_id) values (?, ?, ?)",
             (request.form["name"].strip(), request.form.get("description", "").strip(), owner_id),
         )
-        for position, field_line in enumerate(request.form.get("fields", "").splitlines()):
-            field_name, field_type = parse_field_definition(field_line)
-            if field_name:
-                db.execute(
-                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                    (cursor.lastrowid, field_name, field_type, position),
-                )
+        for position, (field_name, field_type) in enumerate(form_field_definitions(request.form)):
+            db.execute(
+                "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
+                (cursor.lastrowid, field_name, field_type, position),
+            )
         db.commit()
         return redirect(url_for("collection_view", collection_id=cursor.lastrowid))
-    return render_template("collection_form.html", collection=None, collectors=collectors)
+    return render_template(
+        "collection_form.html",
+        collection=None,
+        collectors=collectors,
+        field_type_choices=FIELD_TYPE_CHOICES,
+    )
 
 
 @app.route("/collections/<int:collection_id>/edit", methods=("GET", "POST"))
@@ -2060,18 +2080,21 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_line in request.form.get("fields", "").splitlines():
-            field_name, field_type = parse_field_definition(field_line)
-            if field_name:
-                db.execute(
-                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                    (collection["id"], field_name, field_type, next_position),
-                )
-                next_position += 1
+        for field_name, field_type in form_field_definitions(request.form):
+            db.execute(
+                "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
+                (collection["id"], field_name, field_type, next_position),
+            )
+            next_position += 1
         db.commit()
         flash("Collection saved.", "success")
         return redirect(url_for("collection_view", collection_id=collection["id"]))
-    return render_template("collection_form.html", collection=collection, collectors=collectors)
+    return render_template(
+        "collection_form.html",
+        collection=collection,
+        collectors=collectors,
+        field_type_choices=FIELD_TYPE_CHOICES,
+    )
 
 
 @app.route("/collections/<int:collection_id>")
