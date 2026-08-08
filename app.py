@@ -1100,8 +1100,19 @@ def load_current_user():
     g.user = None
     if user_id:
         g.user = get_db().execute("select * from users where id = ?", (user_id,)).fetchone()
-    if request.method == "POST" and not valid_csrf_token(request.form.get("csrf_token") or request.headers.get("X-CSRFToken")):
-        abort(400)
+    if request.method == "POST":
+        csrf_value = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
+        if not valid_csrf_token(csrf_value):
+            app.logger.warning(
+                "CSRF validation failed: method=%s endpoint=%s host=%s form_token=%s session_token=%s session_cookie=%s",
+                request.method,
+                request.endpoint,
+                request.host,
+                bool(csrf_value),
+                bool(session.get("csrf_token")),
+                "session=" in request.headers.get("Cookie", ""),
+            )
+            abort(400)
 
 
 @app.before_request
