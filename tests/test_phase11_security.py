@@ -1,6 +1,6 @@
 import unittest
 
-from app import sanitize_svg, valid_annotation_geometry, valid_json_object, wiki_slug
+from app import app, add_security_headers, sanitize_svg, valid_annotation_geometry, valid_json_object, wiki_slug
 
 
 class Phase11SecurityTests(unittest.TestCase):
@@ -25,6 +25,11 @@ class Phase11SecurityTests(unittest.TestCase):
     def test_wiki_slugs_are_stable_and_safe(self):
         self.assertEqual(wiki_slug("House of Dawn!"), "house-of-dawn")
         self.assertEqual(wiki_slug("!!!"), "page")
+
+    def test_html_responses_are_not_cached(self):
+        with app.test_request_context("/login"):
+            response = add_security_headers(app.make_response("Sign in"))
+        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 if __name__ == "__main__":

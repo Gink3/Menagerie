@@ -1117,6 +1117,8 @@ def add_security_headers(response):
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
+    if response.content_type.startswith("text/html"):
+        response.headers.setdefault("Cache-Control", "no-store")
     if request.is_secure:
         response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
