@@ -1112,6 +1112,8 @@ def load_current_user():
                 bool(session.get("csrf_token")),
                 "session=" in request.headers.get("Cookie", ""),
             )
+            if request.endpoint == "login":
+                return clear_stale_login_session()
             abort(400)
 
 
@@ -1177,6 +1179,15 @@ def csrf_token():
 
 def valid_csrf_token(token):
     return bool(token and session.get("csrf_token") and secrets.compare_digest(token, session["csrf_token"]))
+
+
+def clear_stale_login_session():
+    session.clear()
+    response = redirect(url_for("login"))
+    cookie_name = app.config["SESSION_COOKIE_NAME"]
+    response.delete_cookie(cookie_name, path="/")
+    response.delete_cookie(cookie_name, path="/login")
+    return response
 
 
 @app.context_processor

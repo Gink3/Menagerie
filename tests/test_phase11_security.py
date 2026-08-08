@@ -1,6 +1,16 @@
 import unittest
 
-from app import app, add_security_headers, sanitize_svg, valid_annotation_geometry, valid_json_object, wiki_slug
+from flask import session
+
+from app import (
+    add_security_headers,
+    app,
+    clear_stale_login_session,
+    sanitize_svg,
+    valid_annotation_geometry,
+    valid_json_object,
+    wiki_slug,
+)
 
 
 class Phase11SecurityTests(unittest.TestCase):
@@ -30,6 +40,16 @@ class Phase11SecurityTests(unittest.TestCase):
         with app.test_request_context("/login"):
             response = add_security_headers(app.make_response("Sign in"))
         self.assertEqual(response.headers["Cache-Control"], "no-store")
+
+    def test_stale_login_session_is_cleared_from_common_paths(self):
+        with app.test_request_context("/login"):
+            session["csrf_token"] = "stale"
+            response = clear_stale_login_session()
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.headers["Location"], "/login")
+        cookie_headers = response.headers.getlist("Set-Cookie")
+        self.assertTrue(any(header.endswith("Path=/") for header in cookie_headers))
+        self.assertTrue(any(header.endswith("Path=/login") for header in cookie_headers))
 
 
 if __name__ == "__main__":
