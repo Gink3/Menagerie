@@ -7,7 +7,7 @@
   {{ csrf_field()|safe }}
   <label>Name<input name="name" value="{{ collection.name if collection else '' }}" required></label>
   <label>Description<textarea name="description" rows="3">{{ collection.description if collection else '' }}</textarea></label>
-  {% if g.user.role == 'admin' %}
+  {% if collection and g.user.role == 'admin' %}
     <label>Owner
       <select name="owner_id">
         {% for collector in collectors %}

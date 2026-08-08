@@ -2030,16 +2030,10 @@ def new_collection():
     if not user_can_create_collection():
         abort(403)
     db = get_db()
-    collectors = db.execute(
-        "select id, username from users where role in ('admin', 'collector') order by username"
-    ).fetchall()
     if request.method == "POST":
-        owner_id = valid_collection_owner_id(g.user["id"], g.user["id"])
-        if g.user["role"] == "admin":
-            owner_id = valid_collection_owner_id(request.form.get("owner_id"), g.user["id"])
         cursor = db.execute(
             "insert into collections (name, description, owner_id) values (?, ?, ?)",
-            (request.form["name"].strip(), request.form.get("description", "").strip(), owner_id),
+            (request.form["name"].strip(), request.form.get("description", "").strip(), g.user["id"]),
         )
         for position, (field_name, field_type) in enumerate(form_field_definitions(request.form)):
             db.execute(
@@ -2051,7 +2045,6 @@ def new_collection():
     return render_template(
         "collection_form.html",
         collection=None,
-        collectors=collectors,
         field_type_choices=FIELD_TYPE_CHOICES,
     )
 
