@@ -51,6 +51,9 @@ class Phase11SecurityTests(unittest.TestCase):
         self.assertTrue(any(header.endswith("Path=/") for header in cookie_headers))
         self.assertTrue(any(header.endswith("Path=/login") for header in cookie_headers))
 
+    def test_session_cookie_has_an_application_specific_name(self):
+        self.assertEqual(app.config["SESSION_COOKIE_NAME"], "menagerie_session_v2")
+
 
 if __name__ == "__main__":
     unittest.main()

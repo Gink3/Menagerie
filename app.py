@@ -66,6 +66,7 @@ app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SECURE", "0") == "1"
+app.config["SESSION_COOKIE_NAME"] = os.environ.get("MENAGERIE_SESSION_COOKIE_NAME", "menagerie_session_v2")
 if os.environ.get("MENAGERIE_PROXY_FIX", "1") == "1":
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_port=1)
 
