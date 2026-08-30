@@ -1378,8 +1378,6 @@ def gallery_images(owner_id=None, mixed=False):
         where.append("collections.owner_id = ?")
         params.append(owner_id)
     order = "users.username, items.gallery_y, items.gallery_x, item_images.gallery_position, item_images.position, item_images.id"
-    if mixed:
-        order = "random()"
     rows = get_db().execute(
         f"""
         select item_images.*, items.id as item_id, items.name as item_name,
@@ -1419,12 +1417,10 @@ def gallery_images(owner_id=None, mixed=False):
         item_lookup[item_id]["images"].append(row)
     if mixed:
         # The public gallery is a fresh mixed exhibition on every visit; personal
-        # gallery layouts remain saved and editable.
-        for item in gallery_items:
-            item["gallery_w"] = random.choice((1, 1, 2, 2, 3))
-            item["gallery_h"] = random.choice((1, 1, 2, 2, 3))
-            item["gallery_x"] = random.randint(0, 6 - item["gallery_w"])
-            item["gallery_y"] = random.randint(0, max(1, len(gallery_items) // 2))
+        # gallery layouts remain saved and editable. Shuffle after grouping the
+        # image rows, so every item has an equal chance of appearing first.
+        random.shuffle(gallery_items)
+        return random_gallery_layout(gallery_items)
     return normalize_gallery_layout(gallery_items)
 
 
@@ -1461,6 +1457,36 @@ def normalize_gallery_layout(items):
         tile["gallery_h"] = height
         normalized.append(tile)
     return normalized
+
+
+def random_gallery_layout(items, columns=6):
+    """Give mixed-gallery items random sizes while fully packing each row."""
+    layout = []
+    x = y = 0
+    row_height = 1
+    for position, item in enumerate(items):
+        if x == 0:
+            # Keeping a row's height uniform means a new row never leaves holes
+            # beneath a shorter neighboring tile.
+            row_height = random.choice((1, 1, 2, 2, 3))
+
+        remaining_width = columns - x
+        is_last_item = position == len(items) - 1
+        width = remaining_width if is_last_item else min(
+            remaining_width, random.choice((1, 1, 2, 2, 3))
+        )
+        tile = row_to_dict(item)
+        tile["gallery_x"] = x
+        tile["gallery_y"] = y
+        tile["gallery_w"] = width
+        tile["gallery_h"] = row_height
+        layout.append(tile)
+
+        x += width
+        if x == columns:
+            x = 0
+            y += row_height
+    return layout
 
 
 def tile_overlaps(occupied, x, y, width, height):
@@ -1513,16 +1539,26 @@ def parse_field_definition(line):
 
 def form_field_definitions(form):
     """Return the non-empty field definitions submitted by the collection form."""
+    return [(name, field_type) for _, name, field_type in form_collection_field_rows(form)]
+
+
+def form_collection_field_rows(form):
+    """Return submitted collection fields, including an ID for existing fields."""
+    field_ids = form.getlist("field_id")
     field_names = form.getlist("field_name")
     field_types = form.getlist("field_type")
     if field_names:
         return [
-            (name.strip(), normalize_field_type(field_types[position] if position < len(field_types) else "text"))
+            (
+                field_ids[position].strip() if position < len(field_ids) else "",
+                name.strip(),
+                normalize_field_type(field_types[position] if position < len(field_types) else "text"),
+            )
             for position, name in enumerate(field_names)
             if name.strip()
         ]
     return [
-        parse_field_definition(field_line)
+        ("", *parse_field_definition(field_line))
         for field_line in form.get("fields", "").splitlines()
         if parse_field_definition(field_line)[0]
     ]
@@ -2073,12 +2109,18 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_name, field_type in form_field_definitions(request.form):
-            db.execute(
-                "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                (collection["id"], field_name, field_type, next_position),
-            )
-            next_position += 1
+        for field_id, field_name, field_type in form_collection_field_rows(request.form):
+            if field_id:
+                db.execute(
+                    "update fields set name = ?, field_type = ? where id = ? and collection_id = ?",
+                    (field_name, field_type, field_id, collection["id"]),
+                )
+            else:
+                db.execute(
+                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
+                    (collection["id"], field_name, field_type, next_position),
+                )
+                next_position += 1
         db.commit()
         flash("Collection saved.", "success")
         return redirect(url_for("collection_view", collection_id=collection["id"]))
@@ -2086,6 +2128,7 @@ def edit_collection(collection):
         "collection_form.html",
         collection=collection,
         collectors=collectors,
+        fields=get_fields(collection["id"]),
         field_type_choices=FIELD_TYPE_CHOICES,
     )
 

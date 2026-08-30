@@ -7,7 +7,9 @@ from app import (
     add_security_headers,
     app,
     clear_stale_login_session,
+    form_collection_field_rows,
     form_field_definitions,
+    random_gallery_layout,
     sanitize_svg,
     valid_annotation_geometry,
     valid_json_object,
@@ -49,6 +51,17 @@ class Phase11SecurityTests(unittest.TestCase):
         ]))
         self.assertEqual(fields, [("Manufacturer", "text"), ("Complete", "checkbox")])
 
+    def test_collection_field_rows_keep_existing_field_ids_paired(self):
+        fields = form_collection_field_rows(MultiDict([
+            ("field_id", "12"),
+            ("field_name", "Manufacturer"),
+            ("field_type", "text"),
+            ("field_id", ""),
+            ("field_name", "Condition"),
+            ("field_type", "checkbox"),
+        ]))
+        self.assertEqual(fields, [("12", "Manufacturer", "text"), ("", "Condition", "checkbox")])
+
     def test_html_responses_are_not_cached(self):
         with app.test_request_context("/login"):
             response = add_security_headers(app.make_response("Sign in"))
@@ -66,6 +79,18 @@ class Phase11SecurityTests(unittest.TestCase):
 
     def test_session_cookie_has_an_application_specific_name(self):
         self.assertEqual(app.config["SESSION_COOKIE_NAME"], "menagerie_session_v2")
+
+    def test_random_gallery_layout_fills_each_row_before_the_next(self):
+        tiles = random_gallery_layout([{"id": index} for index in range(12)])
+        occupied = set()
+        for tile in tiles:
+            for y in range(tile["gallery_y"], tile["gallery_y"] + tile["gallery_h"]):
+                for x in range(tile["gallery_x"], tile["gallery_x"] + tile["gallery_w"]):
+                    self.assertNotIn((x, y), occupied)
+                    occupied.add((x, y))
+
+        for y in range(max(y for _, y in occupied) + 1):
+            self.assertEqual({x for x, row in occupied if row == y}, set(range(6)))
 
 
 if __name__ == "__main__":
