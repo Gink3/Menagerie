@@ -8,13 +8,15 @@
   <a href="{{ url_for('admin_settings') }}">Settings</a>
 </div>
 <div class="page-head"><h1>Users</h1></div>
-<form method="post" class="toolbar">
-  {{ csrf_field()|safe }}
-  <input name="username" placeholder="Username" required>
-  <input name="password" type="password" placeholder="Password" required>
-  <select name="role"><option>collector</option><option>viewer</option><option>admin</option></select>
-  <button type="submit">Add user</button>
-</form>
+{% if can_create_accounts %}
+  <form method="post" class="toolbar">
+    {{ csrf_field()|safe }}
+    <input name="username" placeholder="Username" required>
+    <input name="password" type="password" placeholder="Password" required>
+    <select name="role"><option>collector</option><option>viewer</option><option>admin</option></select>
+    <button type="submit">Add user</button>
+  </form>
+{% endif %}
 <div class="table-wrap"><table>
   <tr><th>Username</th><th>Role</th><th>Created</th><th>Capabilities</th></tr>
   {% for user in users %}

@@ -6,7 +6,7 @@
     <p>{{ g.user.username }} · {{ g.user.role }}</p>
   </div>
 </div>
-{% if g.user.role == 'admin' %}
+{% if can_create_accounts %}
 <section class="panel stack">
   <div>
     <h2>Accounts</h2>

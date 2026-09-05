@@ -1042,6 +1042,12 @@ def init_db():
     first_admin = db.execute("select id from users where role = 'admin' order by id limit 1").fetchone()
     if first_admin:
         db.execute("update collections set owner_id = ? where owner_id is null", (first_admin["id"],))
+        # Pin the bootstrap administrator. Only this account may create further
+        # accounts, even if additional administrators are added later.
+        db.execute(
+            "insert or ignore into settings (key, value) values ('bootstrap_admin_id', ?)",
+            (str(first_admin["id"]),),
+        )
     run_migrations(db)
     layout_seeded = db.execute("select value from settings where key = 'gallery_layout_seeded'").fetchone()
     if layout_seeded is None:
@@ -1160,6 +1166,27 @@ def admin_required(view):
         if g.user is None:
             return redirect(url_for("login", next=request.path))
         if g.user["role"] != "admin":
+            abort(403)
+        return view(**kwargs)
+
+    return wrapped_view
+
+
+def is_bootstrap_admin(user):
+    if user is None or user["role"] != "admin":
+        return False
+    configured_admin = get_db().execute(
+        "select value from settings where key = 'bootstrap_admin_id'"
+    ).fetchone()
+    return configured_admin is not None and configured_admin["value"] == str(user["id"])
+
+
+def bootstrap_admin_required(view):
+    @wraps(view)
+    def wrapped_view(**kwargs):
+        if g.user is None:
+            return redirect(url_for("login", next=request.path))
+        if not is_bootstrap_admin(g.user):
             abort(403)
         return view(**kwargs)
 
@@ -1749,31 +1776,9 @@ def login():
 
 @app.route("/apply", methods=("GET", "POST"))
 def apply():
-    if request.method == "POST":
-        rate_key = ("apply", request.remote_addr or "unknown")
-        if not rate_limit(rate_key, 5, 60 * 60):
-            flash("Too many applications from this address. Try again later.", "error")
-            return render_template("apply.html"), 429
-        username = request.form["username"].strip()
-        password = request.form["password"]
-        confirm_password = request.form.get("confirm_password", "")
-        if not username:
-            flash("Username is required.", "error")
-        elif len(password) < 8:
-            flash("Password must be at least 8 characters.", "error")
-        elif password != confirm_password:
-            flash("Passwords do not match.", "error")
-        elif username_exists(username) or application_exists(username):
-            flash("That username is already taken or awaiting approval.", "error")
-        else:
-            get_db().execute(
-                "insert into user_applications (username, password_hash) values (?, ?)",
-                (username, generate_password_hash(password)),
-            )
-            get_db().commit()
-            flash("Application submitted. An admin will review it before you can sign in.", "success")
-            return redirect(url_for("login"))
-    return render_template("apply.html")
+    # Public registration is deliberately disabled. Administrators create
+    # accounts from the protected Settings area instead.
+    abort(404)
 
 
 @app.route("/logout", methods=("POST",))
@@ -1839,11 +1844,16 @@ def user_settings():
             get_db().commit()
             flash("Password updated.", "success")
             return redirect(url_for("user_settings"))
-    return render_template("user_settings.html", theme_choices=theme_choices, selected_theme=user["theme"] if user["theme"] in theme_choices else "classic-dark")
+    return render_template(
+        "user_settings.html",
+        theme_choices=theme_choices,
+        selected_theme=user["theme"] if user["theme"] in theme_choices else "classic-dark",
+        can_create_accounts=is_bootstrap_admin(g.user),
+    )
 
 
 @app.route("/settings/accounts/new", methods=("GET", "POST"))
-@admin_required
+@bootstrap_admin_required
 def create_account():
     if request.method == "POST":
         username = request.form.get("username", "").strip()
@@ -3398,7 +3408,7 @@ def admin_applicants():
 
 
 @app.route("/admin/applicants/<int:application_id>/approve", methods=("POST",))
-@admin_required
+@bootstrap_admin_required
 def approve_applicant(application_id):
     db = get_db()
     application = db.execute("select * from user_applications where id = ?", (application_id,)).fetchone()
@@ -3435,6 +3445,8 @@ def decline_applicant(application_id):
 def admin_users():
     db = get_db()
     if request.method == "POST":
+        if not is_bootstrap_admin(g.user):
+            abort(403)
         username = request.form["username"].strip()
         password = request.form["password"]
         role = normalize_role(request.form.get("role", "collector"))
@@ -3459,6 +3471,7 @@ def admin_users():
         users=users,
         capabilities=CAPABILITIES,
         user_capabilities=user_capabilities,
+        can_create_accounts=is_bootstrap_admin(g.user),
     )
 
 

@@ -1,10 +1,12 @@
 import unittest
 
 from flask import session
+from werkzeug.exceptions import NotFound
 from werkzeug.datastructures import MultiDict
 
 from app import (
     add_security_headers,
+    apply,
     app,
     clear_stale_login_session,
     form_collection_field_rows,
@@ -79,6 +81,11 @@ class Phase11SecurityTests(unittest.TestCase):
 
     def test_session_cookie_has_an_application_specific_name(self):
         self.assertEqual(app.config["SESSION_COOKIE_NAME"], "menagerie_session_v2")
+
+    def test_public_registration_route_is_disabled(self):
+        with app.test_request_context("/apply"):
+            with self.assertRaises(NotFound):
+                apply()
 
     def test_random_gallery_layout_fills_each_row_before_the_next(self):
         tiles = random_gallery_layout([{"id": index} for index in range(12)])
