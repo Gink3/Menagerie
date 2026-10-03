@@ -148,10 +148,19 @@ To declare mandatory **existing custom fields** and their exact types, configure
 MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{}'
 ```
 
-This is the default: no mandatory custom fields. Remove any previous Mini ID override from this environment variable to use only the built-in UUID requirement. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
+This is the default: no mandatory custom fields. Remove any previous Mini ID override from this environment variable to use only the built-in UUID requirement. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, `checkbox`, and `dropdown`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
 
 ### Running the update
 
 Install the updated requirements and restart Menagerie through your existing deployment process. Migrations 14 and 15 add API credentials and item identities without dropping existing data. The request-body limit defaults to 128 MiB to accommodate a six-photo upload and is configurable with `MENAGERIE_MAX_UPLOAD_MB`; configure the reverse proxy's upload limit consistently. Mini Scan requires HTTPS for remote servers; HTTP is supported for localhost development. Server updates do not require reflashing the Pico.
 
 Tests: `.venv/bin/python -m unittest discover -s tests`. Tests use temporary databases and uploads.
+
+
+### Dropdown collection fields
+
+Choose **Dropdown** when adding a field in the collection editor or Admin → Fields. Enter its allowed options one per line. Empty lines and duplicate options are ignored; at least one option is required, with a maximum of 200 options of 200 characters each. The item form and Mini Scan render these fields as selection menus. API and browser submissions reject values outside the configured list.
+
+On a collection page, expand **<field name> options** and use **Add option** to extend the list. Collection managers can add options; viewers cannot. Collection filters also use the dropdown choices and match the selected option exactly. Existing options in use cannot be removed from a field definition, preventing saved item values from becoming invalid.
+
+Migration 16 adds dropdown option storage. Restart Menagerie after updating. In Mini Scan, close item dialogs and refresh collections to load newly added options; reopening a local draft refreshes its field definitions without changing its UUID.

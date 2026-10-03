@@ -33,6 +33,7 @@
                 {% endfor %}
               </select>
             </label>
+    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
           </div>
         {% endfor %}
       {% else %}
@@ -46,6 +47,7 @@
               {% endfor %}
             </select>
           </label>
+    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
         </div>
       {% endif %}
     </div>
@@ -64,14 +66,26 @@
         {% endfor %}
       </select>
     </label>
+    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
   </div>
 </template>
 <script>
   const fieldList = document.getElementById("collection-field-list");
   const fieldTemplate = document.getElementById("collection-field-template");
+  const updateOptions = (row) => {
+    const enabled = row.querySelector('[name="field_type"]').value === "dropdown";
+    const label = row.querySelector(".dropdown-options");
+    label.hidden = !enabled;
+    label.querySelector("textarea").required = enabled;
+  };
+  fieldList.querySelectorAll(".collection-field-row").forEach(updateOptions);
+  fieldList.addEventListener("change", (event) => {
+    if (event.target.name === "field_type") updateOptions(event.target.closest(".collection-field-row"));
+  });
   document.getElementById("add-collection-field").addEventListener("click", () => {
     fieldList.append(fieldTemplate.content.cloneNode(true));
-    fieldList.lastElementChild.querySelector("input").focus();
+    updateOptions(fieldList.lastElementChild);
+    fieldList.lastElementChild.querySelector('[name="field_name"]').focus();
   });
 </script>
 {% endblock %}

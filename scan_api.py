@@ -7,6 +7,7 @@ import math
 import re
 import sqlite3
 import uuid
+import dropdown_fields
 from datetime import date, datetime
 
 from flask import Blueprint, g, jsonify, request, url_for
@@ -61,6 +62,8 @@ def field_value(field, value):
     value = value.strip()
     if not value:
         return value
+    if kind == "dropdown" and value not in field.get("options", []):
+        raise ValueError(f"{field['name']}: choose one of the configured options.")
     if kind == "number" and not math.isfinite(float(value)):
         raise ValueError("Number must be finite.")
     if kind == "date":
@@ -88,6 +91,9 @@ def collection_schema(host, collection):
                 f'Change "{name}" to type "{kind}" (currently "{found[0]["field_type"]}").'
             )
     for field in fields:
+        field["options"] = (
+            dropdown_fields.options(field) if field["field_type"] == "dropdown" else []
+        )
         field["required"] = field["name"].casefold() in {
             n.casefold() for n in requirements
         }

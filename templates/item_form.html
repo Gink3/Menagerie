@@ -13,6 +13,11 @@
     {% set field_value = values.get(field.id, '') if values is defined else '' %}
     {% if field.field_type == "multiline" %}
       <label>{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
+    {% elif field.field_type == "dropdown" %}
+      <label>{{ field.name }}<select name="field_{{ field.id }}">
+        <option value="">Choose an option</option>
+        {% for option in field|dropdown_options %}<option value="{{ option }}" {% if field_value == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+      </select></label>
     {% elif field.field_type == "checkbox" %}
       <label class="check-row"><input name="field_{{ field.id }}" type="checkbox" value="true" {% if field_value == "true" %}checked{% endif %}> {{ field.name }}</label>
     {% else %}

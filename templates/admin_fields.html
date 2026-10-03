@@ -22,6 +22,7 @@
         <option value="{{ value }}">{{ label }}</option>
       {% endfor %}
     </select>
+    <label>Dropdown options (one per line)<textarea name="field_options" rows="3"></textarea></label>
     <button type="submit">Add field</button>
   </form>
   <div class="table-wrap">
@@ -38,6 +39,7 @@
                   <option value="{{ value }}" {% if field.field_type == value %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
+              <label>Dropdown options (one per line)<textarea name="field_options" rows="3">{{ (field|dropdown_options)|join('\n') }}</textarea></label>
               <input name="position" type="number" min="0" value="{{ field.position }}">
               <button type="submit">Save</button>
             </form>

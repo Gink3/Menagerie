@@ -50,7 +50,12 @@
       </select>
     </label>
     {% for field in fields %}
-      {% if field.field_type == "checkbox" %}
+      {% if field.field_type == "dropdown" %}
+        <label>{{ field.name }}<select name="field_{{ field.id }}">
+          <option value="">Any</option>
+          {% for option in field|dropdown_options %}<option value="{{ option }}" {% if field_filters.get(field.id) == option %}selected{% endif %}>{{ option }}</option>{% endfor %}
+        </select></label>
+      {% elif field.field_type == "checkbox" %}
         <label>{{ field.name }}
           <select name="field_{{ field.id }}">
             <option value="" {% if not field_filters.get(field.id) %}selected{% endif %}>Any</option>
@@ -67,6 +72,21 @@
     {% endfor %}
   </div>
 </form>
+
+
+{% if can_manage %}
+  {% for field in fields if field.field_type == 'dropdown' %}
+    <details class="panel">
+      <summary>{{ field.name }} options</summary>
+      <p>{{ (field|dropdown_options)|join(', ') }}</p>
+      <form method="post" class="toolbar" action="{{ url_for('add_field_option', collection_id=collection.id, field_id=field.id) }}">
+        {{ csrf_field()|safe }}
+        <label>New option<input name="option" required maxlength="200"></label>
+        <button type="submit">Add option</button>
+      </form>
+    </details>
+  {% endfor %}
+{% endif %}
 
 {% if view == 'gallery' %}
   <div class="gallery">

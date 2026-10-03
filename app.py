@@ -2,6 +2,7 @@ import os
 import sys
 import api_keys
 import scan_api
+import dropdown_fields
 import json
 import re
 import random
@@ -60,6 +61,7 @@ FIELD_TYPE_CHOICES = (
     ("timestamp", "Timestamp"),
     ("url", "URL"),
     ("checkbox", "Checkbox"),
+    ("dropdown", "Dropdown"),
 )
 FIELD_TYPES = {value for value, label in FIELD_TYPE_CHOICES}
 
@@ -589,6 +591,7 @@ MIGRATIONS = (
     (13, "wiki_images", migration_013_wiki_images),
     (14, "api_keys", api_keys.migrate),
     (15, "mini_scan_identity", scan_api.migrate),
+    (16, "dropdown_fields", dropdown_fields.migrate),
 )
 
 
@@ -1602,7 +1605,10 @@ def form_collection_field_rows(form):
 def field_form_value(field, form):
     if field["field_type"] == "checkbox":
         return "true" if form.get(f"field_{field['id']}") else "false"
-    return form.get(f"field_{field['id']}", "").strip()
+    value = form.get(f"field_{field['id']}", "").strip()
+    if field["field_type"] == "dropdown" and value and value not in dropdown_fields.options(field):
+        abort(400, description="Choose a configured dropdown option.")
+    return value
 
 
 @app.template_filter("display_field_value")
@@ -2089,10 +2095,10 @@ def new_collection():
             "insert into collections (name, description, owner_id) values (?, ?, ?)",
             (request.form["name"].strip(), request.form.get("description", "").strip(), g.user["id"]),
         )
-        for position, (field_name, field_type) in enumerate(form_field_definitions(request.form)):
+        for position, (_, field_name, field_type, options_json) in enumerate(dropdown_fields.specs(sys.modules[__name__], request.form)):
             db.execute(
-                "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                (cursor.lastrowid, field_name, field_type, position),
+                "insert into fields (collection_id, name, field_type, position, options_json) values (?, ?, ?, ?, ?)",
+                (cursor.lastrowid, field_name, field_type, position, options_json),
             )
         db.commit()
         return redirect(url_for("collection_view", collection_id=cursor.lastrowid))
@@ -2127,16 +2133,16 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_id, field_name, field_type in form_collection_field_rows(request.form):
+        for field_id, field_name, field_type, options_json in dropdown_fields.specs(sys.modules[__name__], request.form):
             if field_id:
                 db.execute(
-                    "update fields set name = ?, field_type = ? where id = ? and collection_id = ?",
-                    (field_name, field_type, field_id, collection["id"]),
+                    "update fields set name = ?, field_type = ?, options_json = ? where id = ? and collection_id = ?",
+                    (field_name, field_type, options_json, field_id, collection["id"]),
                 )
             else:
                 db.execute(
-                    "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                    (collection["id"], field_name, field_type, next_position),
+                    "insert into fields (collection_id, name, field_type, position, options_json) values (?, ?, ?, ?, ?)",
+                    (collection["id"], field_name, field_type, next_position, options_json),
                 )
                 next_position += 1
         db.commit()
@@ -2200,7 +2206,7 @@ def collection_view(collection_id):
         value = field_filters.get(field["id"], "")
         field_name = field["name"]
         if value:
-            if field["field_type"] == "checkbox":
+            if field["field_type"] in ("checkbox", "dropdown"):
                 items = [item for item in items if item["fields"].get(field_name, "") == value]
             else:
                 value_lower = value.lower()
@@ -3530,8 +3536,8 @@ def admin_fields():
                 "select coalesce(max(position), -1) + 1 from fields where collection_id = ?", (selected_id,)
             ).fetchone()[0]
             db.execute(
-                "insert into fields (collection_id, name, field_type, position) values (?, ?, ?, ?)",
-                (selected_id, name, field_type, position),
+                "insert into fields (collection_id, name, field_type, position, options_json) values (?, ?, ?, ?, ?)",
+                (selected_id, name, field_type, position, dropdown_fields.encode(request.form.get("field_options", ""), field_type)),
             )
             db.commit()
     fields = get_fields(selected_id) if selected_id else []
@@ -3558,8 +3564,8 @@ def update_field(field_id):
         position = field["position"]
     if name:
         db.execute(
-            "update fields set name = ?, field_type = ?, position = ? where id = ?",
-            (name, field_type, position, field["id"]),
+            "update fields set name = ?, field_type = ?, position = ?, options_json = ? where id = ?",
+            (name, field_type, position, dropdown_fields.encode(request.form.get("field_options", ""), field_type, db, field["id"]), field["id"]),
         )
         db.commit()
         flash("Field saved.", "success")
@@ -3596,6 +3602,7 @@ def admin_settings():
 
 api_keys.register(sys.modules[__name__])
 scan_api.register(sys.modules[__name__])
+dropdown_fields.register(sys.modules[__name__])
 
 
 if __name__ == "__main__":
