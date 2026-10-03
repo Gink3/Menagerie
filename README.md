@@ -140,15 +140,15 @@ Every item has a unique UUID after migration. The web item form can create an un
 
 ### Collection requirements
 
-Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, RFID UID and one selected photo are required for Mini Scan uploads. The exact additional mandatory collection field list is pending product confirmation; no arbitrary fields are added to existing collections.
+Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, RFID UID and one selected photo are required for Mini Scan uploads. **Mini ID** is the mandatory custom field, with type **text**. It accepts numeric IDs (including leading zeros), RFID UIDs, UUIDs, or other identifiers. Mini Scan defaults it to the scanned RFID UID, and API uploads reject a Mini ID already used in the same account. No fields are added to existing collections automatically.
 
 To declare mandatory **existing custom fields** and their exact types, configure a JSON mapping, for example:
 
 ```sh
-MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{"Manufacturer":"text","Painted":"checkbox"}'
+MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{"Mini ID":"text"}'
 ```
 
-This example is not enabled by default. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
+This is the default requirement. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
 
 ### Running the update
 

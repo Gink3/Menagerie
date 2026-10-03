@@ -75,7 +75,7 @@ def field_value(field, value):
 def collection_schema(host, collection):
     fields = [dict(f) for f in host.get_fields(collection["id"])]
     # Deployments can specify mandatory existing collection fields; never add silently.
-    requirements = host.app.config.get("MINI_SCAN_REQUIRED_FIELDS", {})
+    requirements = host.app.config.get("MINI_SCAN_REQUIRED_FIELDS", {"Mini ID": "text"})
     issues = []
     for name, kind in requirements.items():
         found = [f for f in fields if f["name"].casefold() == name.casefold()]
@@ -257,6 +257,25 @@ def register(host):
                 if field["required"] and not value:
                     raise ValueError(f"{field['name']} is required.")
                 normalized[field["id"]] = value
+            if db.execute(
+                "select 1 from items where item_uuid=? or rfid_uid=?", (item_uuid, uid)
+            ).fetchone():
+                raise sqlite3.IntegrityError("Duplicate item identity")
+            for field in schema["fields"]:
+                if field["name"].strip().casefold() == "mini id":
+                    mini_id = normalized[field["id"]]
+                    if not mini_id:
+                        raise ValueError("Mini ID is required.")
+                    duplicate = db.execute(
+                        """select 1 from item_values v join fields f on f.id=v.field_id
+                        join items i on i.id=v.item_id join collections c on c.id=i.collection_id
+                        where c.owner_id=? and lower(trim(f.name))='mini id' and trim(v.value)=? limit 1""",
+                        (g.user["id"], mini_id),
+                    ).fetchone()
+                    if duplicate:
+                        raise ValueError(
+                            "Mini ID is already used by another item in your account."
+                        )
             cursor = db.execute(
                 "insert into items(collection_id,name,description,item_uuid,rfid_uid) values(?,?,?,?,?)",
                 (collection_id, name.strip(), description.strip(), item_uuid, uid),

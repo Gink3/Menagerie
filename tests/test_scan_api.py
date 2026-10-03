@@ -1,6 +1,7 @@
 import io
 import json
 import uuid
+from unittest.mock import patch
 from PIL import Image
 import app as host
 from test_api_keys import DatabaseTest
@@ -9,6 +10,11 @@ from test_api_keys import DatabaseTest
 class ScanTests(DatabaseTest):
     def setUp(self):
         super().setUp()
+        config_patch = patch.dict(
+            host.app.config, MINI_SCAN_REQUIRED_FIELDS={"Mini ID": "text"}
+        )
+        config_patch.start()
+        self.addCleanup(config_patch.stop)
         self.headers = self.key()
         with host.app.app_context():
             db = host.get_db()
@@ -17,6 +23,9 @@ class ScanTests(DatabaseTest):
             db.execute(
                 "insert into fields(collection_id,name,field_type) values(1,'Painted','checkbox')"
             )
+            db.execute(
+                "insert into fields(collection_id,name,field_type) values(1,'Mini ID','text')"
+            )
             db.commit()
         self.payload = dict(
             item_uuid=str(uuid.uuid4()),
@@ -24,7 +33,7 @@ class ScanTests(DatabaseTest):
             name="Captain",
             description="",
             tags="army",
-            values={"1": "true"},
+            values={"1": "true", "2": "001"},
         )
         self.request_id = str(uuid.uuid4())
 
@@ -145,3 +154,35 @@ class ScanTests(DatabaseTest):
             self.assertEqual(repeated.json["item_id"], created.json["item_id"])
         finally:
             host.app.config.pop("MINI_SCAN_REQUIRED_FIELDS")
+
+    def test_mini_id_is_required_text_and_unique(self):
+        with host.app.app_context():
+            db = host.get_db()
+            db.execute("update fields set field_type='number' where name='Mini ID'")
+            db.commit()
+        response = self.client.get("/api/v1/collections", headers=self.headers)
+        self.assertIn(
+            'Change "Mini ID" to type "text"',
+            response.json["collections"][0]["issues"][0],
+        )
+        with host.app.app_context():
+            db = host.get_db()
+            db.execute("update fields set field_type='text' where name='Mini ID'")
+            db.commit()
+        self.assertEqual(
+            self.upload(
+                payload={**self.payload, "values": {"1": "true", "2": ""}}
+            ).status_code,
+            422,
+        )
+        self.assertEqual(self.upload().status_code, 201)
+        self.request_id = str(uuid.uuid4())
+        response = self.upload(
+            payload={
+                **self.payload,
+                "item_uuid": str(uuid.uuid4()),
+                "rfid_uid": "12345678",
+            }
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Mini ID is already used", response.json["error"])
