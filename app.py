@@ -2181,6 +2181,7 @@ def collection_view(collection_id):
             item
             for item in items
             if query in item["name"].lower()
+            or query in (item["item_uuid"] or "").lower()
             or query in item["description"].lower()
             or any(query in value.lower() for value in item["fields"].values())
             or any(query in item_tag for item_tag in item["tags"])
@@ -2362,8 +2363,8 @@ def duplicate_item(item_id):
     if not user_can_manage_collection(collection):
         abort(403)
     cursor = db.execute(
-        "insert into items (collection_id, name, description) values (?, ?, ?)",
-        (item["collection_id"], f"{item['name']} copy", item["description"]),
+        "insert into items (collection_id, name, description, item_uuid) values (?, ?, ?, ?)",
+        (item["collection_id"], f"{item['name']} copy", item["description"], str(uuid.uuid4())),
     )
     new_item_id = cursor.lastrowid
     values = db.execute("select field_id, value from item_values where item_id = ?", (item_id,)).fetchall()

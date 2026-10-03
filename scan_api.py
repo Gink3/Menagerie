@@ -101,6 +101,13 @@ def collection_schema(host, collection):
         issues=issues,
         edit_url=url_for("edit_collection", collection_id=collection["id"]),
         core_fields=[
+            {
+                "name": "item_uuid",
+                "label": "UUID",
+                "type": "uuid",
+                "required": True,
+                "auto_generated": True,
+            },
             {"name": "name", "type": "text", "required": True},
             {"name": "description", "type": "multiline", "required": False},
             {"name": "tags", "type": "text", "required": False},

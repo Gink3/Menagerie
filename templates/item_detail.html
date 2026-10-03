@@ -68,6 +68,8 @@
     <p>{{ item.description }}</p>
     <div class="tags">{% for tag in tags %}<span>{{ tag }}</span>{% endfor %}</div>
     <dl>
+      <dt>UUID</dt>
+      <dd class="field-value">{{ item.item_uuid }}</dd>
       {% for field in fields %}
         <dt>{{ field.name }}</dt>
         <dd class="field-value">{{ values.get(field.id, "")|display_field_value(field.field_type) }}</dd>

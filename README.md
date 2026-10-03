@@ -136,7 +136,7 @@ Creation uses multipart form data: `metadata` is a JSON object containing `item_
 
 Send a UUID `Idempotency-Key` header. Retrying the same request with identical metadata and image bytes returns the original item; changed payloads or duplicate RFID/UUID assignments return 409. A failed database transaction removes its newly written images. If an uploaded item was deleted, retrying does not resurrect it. Keys are never accepted via query parameters. API replies use `Cache-Control: no-store`.
 
-Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. API-created Mini Scan items require an RFID tag. RFID UID and UUID uniqueness currently apply across the installation.
+UUID is a built-in field for every collection, displayed in collection tables, gallery cards, item details, and the API collection schema. Collection search and sorting support UUID. Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. API-created Mini Scan items require an RFID tag. RFID UID and UUID uniqueness currently apply across the installation.
 
 ### Collection requirements
 
