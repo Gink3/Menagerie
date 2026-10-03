@@ -66,7 +66,7 @@ FIELD_TYPES = {value for value, label in FIELD_TYPE_CHOICES}
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("MENAGERIE_SECRET_KEY", "dev-change-me")
 app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MENAGERIE_MAX_UPLOAD_MB", "128")) * 1024 * 1024
-app.config["MINI_SCAN_REQUIRED_FIELDS"] = json.loads(os.environ.get("MENAGERIE_MINI_SCAN_REQUIRED_FIELDS", '{"Mini ID":"text"}'))
+app.config["MINI_SCAN_REQUIRED_FIELDS"] = json.loads(os.environ.get("MENAGERIE_MINI_SCAN_REQUIRED_FIELDS", "{}"))
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SECURE", "0") == "1"

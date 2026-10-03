@@ -155,7 +155,7 @@ class ScanTests(DatabaseTest):
         finally:
             host.app.config.pop("MINI_SCAN_REQUIRED_FIELDS")
 
-    def test_mini_id_is_required_text_and_unique(self):
+    def test_optional_custom_requirements_do_not_replace_uuid_identity(self):
         with host.app.app_context():
             db = host.get_db()
             db.execute("update fields set field_type='number' where name='Mini ID'")
@@ -184,5 +184,22 @@ class ScanTests(DatabaseTest):
                 "rfid_uid": "12345678",
             }
         )
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("Mini ID is already used", response.json["error"])
+        self.assertEqual(response.status_code, 201)
+
+    def test_manual_item_uses_uuid_without_rfid_or_mini_id_field(self):
+        with patch.dict(host.app.config, MINI_SCAN_REQUIRED_FIELDS={}):
+            with host.app.app_context():
+                db = host.get_db()
+                db.execute("delete from fields where name='Mini ID'")
+                db.commit()
+            payload = {**self.payload, "rfid_uid": None, "values": {"1": "true"}}
+            response = self.upload(payload=payload)
+            self.assertEqual(response.status_code, 201, response.json)
+            with host.app.app_context():
+                item = host.get_db().execute("select * from items").fetchone()
+                self.assertEqual(item["item_uuid"], payload["item_uuid"])
+                self.assertIsNone(item["rfid_uid"])
+            self.request_id = str(uuid.uuid4())
+            self.assertEqual(self.upload(payload=payload).status_code, 409)
+            payload["item_uuid"] = str(uuid.uuid4())
+            self.assertEqual(self.upload(payload=payload).status_code, 201)

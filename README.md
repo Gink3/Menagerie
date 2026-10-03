@@ -132,23 +132,23 @@ The Mini Scan companion in `../menagerie_capture` uses these endpoints:
 | `GET /api/v1/items/by-rfid/<uid>` | Find an existing owned item and its web edit URL |
 | `POST /api/v1/collections/<id>/items` | Create one item with ordered finalized photos |
 
-Creation uses multipart form data: `metadata` is a JSON object containing `item_uuid`, `rfid_uid`, `name`, `description`, `tags` (comma-separated), and `values` (field ID strings mapped to values). Repeated `images` parts specify display order. At least one image and a valid 4/7/10-byte RFID UID are required. Custom field values are validated against current definitions. Images are decoded, orientation-corrected, and re-encoded to JPEG; malformed images are rejected. The per-image limit is 40 megapixels, with at most 30 selected photos.
+Creation uses multipart form data: `metadata` is a JSON object containing `item_uuid`, `rfid_uid`, `name`, `description`, `tags` (comma-separated), and `values` (field ID strings mapped to values). Repeated `images` parts specify display order. At least one image and a UUID are required. RFID UID is optional; when supplied it must be a valid 4/7/10-byte UID. Custom field values are validated against current definitions. Images are decoded, orientation-corrected, and re-encoded to JPEG; malformed images are rejected. The per-image limit is 40 megapixels, with at most 30 selected photos.
 
 Send a UUID `Idempotency-Key` header. Retrying the same request with identical metadata and image bytes returns the original item; changed payloads or duplicate RFID/UUID assignments return 409. A failed database transaction removes its newly written images. If an uploaded item was deleted, retrying does not resurrect it. Keys are never accepted via query parameters. API replies use `Cache-Control: no-store`.
 
-UUID is a built-in field for every collection, displayed in collection tables, gallery cards, item details, and the API collection schema. Collection search and sorting support UUID. Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. API-created Mini Scan items require an RFID tag. RFID UID and UUID uniqueness currently apply across the installation.
+UUID is a built-in field for every collection, displayed in collection tables, gallery cards, item details, and the API collection schema. Collection search and sorting support UUID. Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. Mini Scan can create items without RFID tags and preserves their generated UUIDs across retries. RFID UID and UUID uniqueness currently apply across the installation.
 
 ### Collection requirements
 
-Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, RFID UID and one selected photo are required for Mini Scan uploads. **Mini ID** is the mandatory custom field, with type **text**. It accepts numeric IDs (including leading zeros), RFID UIDs, UUIDs, or other identifiers. Mini Scan defaults it to the scanned RFID UID, and API uploads reject a Mini ID already used in the same account. No fields are added to existing collections automatically.
+Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, the built-in UUID and one selected photo are required for Mini Scan uploads. Mini Scan populates `item_uuid` for every scanned or manually created item. There is no separate Mini ID requirement; existing custom Mini ID fields and their values are left intact as ordinary fields. RFID is an optional association that can be attached or replaced later in Menagerie. No fields are added to existing collections automatically.
 
 To declare mandatory **existing custom fields** and their exact types, configure a JSON mapping, for example:
 
 ```sh
-MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{"Mini ID":"text"}'
+MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{}'
 ```
 
-This is the default requirement. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
+This is the default: no mandatory custom fields. Remove any previous Mini ID override from this environment variable to use only the built-in UUID requirement. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
 
 ### Running the update
 
