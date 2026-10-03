@@ -6,6 +6,7 @@
     <p>{{ g.user.username }} · {{ g.user.role }}</p>
   </div>
 </div>
+<section class="panel"><h2>Connected applications</h2><a class="button" href="{{ url_for('api_keys.settings') }}">Manage API keys</a></section>
 {% if can_create_accounts %}
 <section class="panel stack">
   <div>

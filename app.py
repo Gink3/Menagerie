@@ -1,4 +1,6 @@
 import os
+import sys
+import api_keys
 import json
 import re
 import random
@@ -583,6 +585,7 @@ MIGRATIONS = (
     (11, "refresh_default_decal", migration_011_refresh_default_decal),
     (12, "decal_templates", migration_012_decal_templates),
     (13, "wiki_images", migration_013_wiki_images),
+    (14, "api_keys", api_keys.migrate),
 )
 
 
@@ -3583,6 +3586,9 @@ def admin_settings():
         flash("Settings saved.", "success")
     settings = {row["key"]: row["value"] for row in db.execute("select * from settings")}
     return render_template("admin_settings.html", settings=settings)
+
+
+api_keys.register(sys.modules[__name__])
 
 
 if __name__ == "__main__":

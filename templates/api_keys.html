@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>API keys</h1>
+<p>Connect Mini Scan to your account. You can have up to five active keys.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+{% if new_key %}<section class="panel"><h2>Copy your new key</h2><p>This is the only time it will be shown.</p><input readonly aria-label="New API key" value="{{ new_key }}" onclick="this.select()"></section>{% endif %}
+<form method="post" class="panel stack">
+{{ csrf_field()|safe }}
+<label>Key name<input name="name" required maxlength="80" placeholder="Mini Scan desktop"></label>
+<button type="submit" {% if keys|length >= 5 %}disabled{% endif %}>Generate API key</button>
+</form>
+{% for key in keys %}<section class="panel">
+<strong>{{ key.name }}</strong> · {{ key.prefix }}…
+<p>Created {{ key.created_at }} · Last used {{ key.last_used_at or 'Never' }}</p>
+<form method="post">{{ csrf_field()|safe }}<input type="hidden" name="action" value="revoke"><input type="hidden" name="key_id" value="{{ key.id }}"><button type="submit">Revoke</button></form>
+</section>{% endfor %}
+{% endblock %}
