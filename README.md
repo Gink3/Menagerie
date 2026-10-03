@@ -118,3 +118,40 @@ Restart Docker, then run the `docker push` command again.
 | `MENAGERIE_ALLOW_INSECURE_DEFAULTS` | unset | Set to `1` only for throwaway local development. |
 
 Change the default admin password immediately after first deployment by creating a new admin user and retiring the bootstrap credentials.
+
+## Mini Scan API and item identity
+
+Users can create and revoke up to five active credentials in **Settings → Manage API keys** (`/settings/api-keys`). A key is shown once, stored only as a SHA-256 digest, and authenticates requests with `Authorization: Bearer <key>`. API access is limited to the key owner's collections, including for administrators; viewer accounts cannot upload items. Existing browser forms still require CSRF tokens.
+
+The Mini Scan companion in `../menagerie_capture` uses these endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/me` | Authenticated account identity |
+| `GET /api/v1/collections` | Owned collections, ordered custom field definitions, core fields, and required-edit issues |
+| `GET /api/v1/items/by-rfid/<uid>` | Find an existing owned item and its web edit URL |
+| `POST /api/v1/collections/<id>/items` | Create one item with ordered finalized photos |
+
+Creation uses multipart form data: `metadata` is a JSON object containing `item_uuid`, `rfid_uid`, `name`, `description`, `tags` (comma-separated), and `values` (field ID strings mapped to values). Repeated `images` parts specify display order. At least one image and a valid 4/7/10-byte RFID UID are required. Custom field values are validated against current definitions. Images are decoded, orientation-corrected, and re-encoded to JPEG; malformed images are rejected. The per-image limit is 40 megapixels, with at most 30 selected photos.
+
+Send a UUID `Idempotency-Key` header. Retrying the same request with identical metadata and image bytes returns the original item; changed payloads or duplicate RFID/UUID assignments return 409. A failed database transaction removes its newly written images. If an uploaded item was deleted, retrying does not resurrect it. Keys are never accepted via query parameters. API replies use `Cache-Control: no-store`.
+
+Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. API-created Mini Scan items require an RFID tag. RFID UID and UUID uniqueness currently apply across the installation.
+
+### Collection requirements
+
+Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, RFID UID and one selected photo are required for Mini Scan uploads. The exact additional mandatory collection field list is pending product confirmation; no arbitrary fields are added to existing collections.
+
+To declare mandatory **existing custom fields** and their exact types, configure a JSON mapping, for example:
+
+```sh
+MENAGERIE_MINI_SCAN_REQUIRED_FIELDS='{"Manufacturer":"text","Painted":"checkbox"}'
+```
+
+This example is not enabled by default. Supported types are `text`, `multiline`, `number`, `date`, `timestamp`, `url`, and `checkbox`. A missing field, ambiguous duplicate name, or wrong type produces an actionable issue list and collection edit URL. Mini Scan displays the list and directs the user to edit the collection. Required non-checkbox values must be nonempty; an unchecked required checkbox is a valid `false` value. Field definitions are checked again when uploading.
+
+### Running the update
+
+Install the updated requirements and restart Menagerie through your existing deployment process. Migrations 14 and 15 add API credentials and item identities without dropping existing data. The request-body limit defaults to 128 MiB to accommodate a six-photo upload and is configurable with `MENAGERIE_MAX_UPLOAD_MB`; configure the reverse proxy's upload limit consistently. Mini Scan requires HTTPS for remote servers; HTTP is supported for localhost development. Server updates do not require reflashing the Pico.
+
+Tests: `.venv/bin/python -m unittest discover -s tests`. Tests use temporary databases and uploads.
