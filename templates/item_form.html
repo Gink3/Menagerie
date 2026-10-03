@@ -7,6 +7,8 @@
   {{ csrf_field()|safe }}
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
+  <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
+  <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
   {% for field in fields %}
     {% set field_value = values.get(field.id, '') if values is defined else '' %}
     {% if field.field_type == "multiline" %}

@@ -1,6 +1,7 @@
 import os
 import sys
 import api_keys
+import scan_api
 import json
 import re
 import random
@@ -64,7 +65,8 @@ FIELD_TYPES = {value for value, label in FIELD_TYPE_CHOICES}
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = os.environ.get("MENAGERIE_SECRET_KEY", "dev-change-me")
-app.config["MAX_CONTENT_LENGTH"] = 32 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = int(os.environ.get("MENAGERIE_MAX_UPLOAD_MB", "128")) * 1024 * 1024
+app.config["MINI_SCAN_REQUIRED_FIELDS"] = json.loads(os.environ.get("MENAGERIE_MINI_SCAN_REQUIRED_FIELDS", "{}"))
 app.config["SESSION_COOKIE_HTTPONLY"] = True
 app.config["SESSION_COOKIE_SAMESITE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SAMESITE", "Lax")
 app.config["SESSION_COOKIE_SECURE"] = os.environ.get("MENAGERIE_SESSION_COOKIE_SECURE", "0") == "1"
@@ -586,6 +588,7 @@ MIGRATIONS = (
     (12, "decal_templates", migration_012_decal_templates),
     (13, "wiki_images", migration_013_wiki_images),
     (14, "api_keys", api_keys.migrate),
+    (15, "mini_scan_identity", scan_api.migrate),
 )
 
 
@@ -1052,6 +1055,8 @@ def init_db():
             (str(first_admin["id"]),),
         )
     run_migrations(db)
+    for row in db.execute("select id from items where item_uuid is null").fetchall():
+        db.execute("update items set item_uuid=? where id=?", (str(uuid.uuid4()), row["id"]))
     layout_seeded = db.execute("select value from settings where key = 'gallery_layout_seeded'").fetchone()
     if layout_seeded is None:
         owner_positions = {}
@@ -1110,7 +1115,7 @@ def load_current_user():
     g.user = None
     if user_id:
         g.user = get_db().execute("select * from users where id = ?", (user_id,)).fetchone()
-    if request.method == "POST":
+    if request.method == "POST" and request.blueprint != "scan_api":
         csrf_value = request.form.get("csrf_token") or request.headers.get("X-CSRFToken")
         if not valid_csrf_token(csrf_value):
             app.logger.warning(
@@ -2244,8 +2249,8 @@ def new_item(collection):
     if request.method == "POST":
         db = get_db()
         cursor = db.execute(
-            "insert into items (collection_id, name, description) values (?, ?, ?)",
-            (collection_id, request.form["name"].strip(), request.form.get("description", "").strip()),
+            "insert into items (collection_id, name, description, item_uuid, rfid_uid) values (?, ?, ?, ?, ?)",
+            (collection_id, request.form["name"].strip(), request.form.get("description", "").strip(), *scan_api.identity(request.form)),
         )
         item_id = cursor.lastrowid
         for field in fields:
@@ -2318,8 +2323,8 @@ def edit_item(item_id):
     fields = get_fields(item["collection_id"])
     if request.method == "POST":
         db.execute(
-            "update items set name = ?, description = ?, updated_at = current_timestamp where id = ?",
-            (request.form["name"].strip(), request.form.get("description", "").strip(), item_id),
+            "update items set name = ?, description = ?, item_uuid = ?, rfid_uid = ?, updated_at = current_timestamp where id = ?",
+            (request.form["name"].strip(), request.form.get("description", "").strip(), *scan_api.identity(request.form), item_id),
         )
         for field in fields:
             db.execute(
@@ -3589,6 +3594,7 @@ def admin_settings():
 
 
 api_keys.register(sys.modules[__name__])
+scan_api.register(sys.modules[__name__])
 
 
 if __name__ == "__main__":
