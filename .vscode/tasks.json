@@ -1,0 +1,60 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Pico: Upload firmware",
+      "type": "process",
+      "command": "${workspaceFolder}/capture/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/tools/flash_pico.py"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Pico: Preview upload command",
+      "type": "process",
+      "command": "${workspaceFolder}/capture/.venv/bin/python",
+      "args": [
+        "${workspaceFolder}/tools/flash_pico.py",
+        "--dry-run"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Menagerie: Run application",
+      "type": "process",
+      "command": "${workspaceFolder}/capture/.venv/bin/python",
+      "args": [
+        "-m",
+        "capture_station"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Mini Scan: Run application",
+      "type": "process",
+      "command": "${workspaceFolder}/capture/.venv/bin/python",
+      "args": [
+        "-m",
+        "mini_scan"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

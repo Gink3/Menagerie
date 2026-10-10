@@ -8,3 +8,9 @@ data/
 *.db
 .codex
 .images/
+
+# Desktop tooling and hardware are not part of the web image.
+capture/
+firmware/
+hardware/
+.vscode/

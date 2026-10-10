@@ -1,0 +1,1 @@
+"""Menagerie capture desktop application."""

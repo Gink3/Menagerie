@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "menagerie-capture"
+version = "0.1.0"
+description = "Desktop controls for the Menagerie miniature capture station"
+requires-python = ">=3.10"
+dependencies = ["pyserial>=3.5,<4", "opencv-python-headless>=4.8,<5", "Pillow>=10,<13", "requests>=2.32,<3", "keyring>=25,<26", "tkinterdnd2>=0.4,<0.5"]
+
+[project.optional-dependencies]
+pico = ["mpremote>=1.29,<2"]
+
+[project.scripts]
+menagerie-capture = "capture_station.app:main"
+mini-scan = "mini_scan.app:main"
+
+[tool.setuptools]
+packages = ["capture_station", "mini_scan", "menagerie_pico"]
+
+[tool.setuptools.package-dir]
+"" = "src"
+menagerie_pico = "../firmware/pico"

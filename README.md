@@ -2,6 +2,19 @@
 
 Menagerie is a self-hosted web app for managing collections of physical items. It provides username/password login, admin/collector/viewer roles, collection ownership, custom fields, table and gallery views, filtering, sorting, tags, item detail pages, and multiple image uploads per item.
 
+## Capture station
+
+This repository also contains the desktop capture apps, Pico firmware, and circuit-board files:
+
+- [Capture setup and launch commands](docs/capture-setup.md)
+- [Capture controls and workflow](capture/README.md)
+- [Wiring](docs/wiring.md)
+- [Capture API and compatibility checks](docs/capture-api.md)
+
+The web app stays at the repository root. Desktop dependencies are installed
+separately from `capture/pyproject.toml`; the web container excludes desktop and
+hardware files. Existing photo, draft, settings, and keyring locations are unchanged.
+
 ## Screenshots
 
 ![Collection table view with filters](.images/CollectionExample.png)
