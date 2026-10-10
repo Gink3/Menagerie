@@ -119,6 +119,8 @@ def collection_schema(host, collection):
             {"name": "tags", "type": "text", "required": False},
         ],
         identity={"uuid": True, "rfid": True},
+        upload_limits={"max_images": 30, "max_image_pixels": 40_000_000,
+                       "max_name_length": 500, "max_request_bytes": host.app.config["MAX_CONTENT_LENGTH"]},
     )
 
 
