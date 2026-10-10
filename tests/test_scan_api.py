@@ -85,6 +85,32 @@ class ScanTests(DatabaseTest):
             200,
         )
 
+    def test_existing_photo_append_replace_replay_and_owner_scope(self):
+        created = self.upload().json
+        item_id = created["item_id"]
+        def photos(mode):
+            image = io.BytesIO()
+            Image.new("RGB", (16, 16), "red").save(image, format="JPEG")
+            return self.client.post(f"/api/v1/items/{item_id}/images",
+                headers={**self.headers, "Idempotency-Key": self.request_id},
+                data={"metadata": json.dumps({**self.payload, "image_mode": mode}),
+                      "images": (io.BytesIO(image.getvalue()), "new.jpg")})
+        self.request_id = str(uuid.uuid4())
+        self.assertEqual(photos("append").status_code, 201)
+        self.assertTrue(photos("append").json["replayed"])
+        with host.app.app_context():
+            rows = host.get_db().execute("select * from item_images where item_id=? order by position", (item_id,)).fetchall()
+            self.assertEqual([r["position"] for r in rows], [0, 1])
+            old = [host.UPLOAD_DIR / r["filename"] for r in rows]
+        self.request_id = str(uuid.uuid4())
+        self.assertEqual(photos("replace").status_code, 201)
+        self.assertTrue(all(not p.exists() for p in old))
+        self.assertTrue(photos("replace").json["replayed"])
+        with host.app.app_context():
+            self.assertEqual(host.get_db().execute("select count(*) from item_images where item_id=?", (item_id,)).fetchone()[0], 1)
+        self.headers = self.key(2)
+        self.assertEqual(photos("replace").status_code, 404)
+
     def test_invalid_images_values_and_required_schema(self):
         self.assertEqual(self.upload(raw=b"not an image").status_code, 422)
         bad = {**self.payload, "values": {"999": "foreign"}}

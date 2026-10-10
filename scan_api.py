@@ -177,10 +177,18 @@ def register(host):
             return jsonify(error="Tag not found."), 404
         return jsonify(item=dict(row), url=url_for("edit_item", item_id=row["id"]))
 
+    @bp.route("/items/<int:target_id>/images", methods=["POST"])
     @bp.route("/collections/<int:collection_id>/items", methods=["POST"])
     @auth
-    def create(collection_id):
+    def create(collection_id=None, target_id=None):
         db = host.get_db()
+        target = None
+        if target_id is not None:
+            target = db.execute("""select items.* from items join collections on collections.id=items.collection_id
+                where items.id=? and collections.owner_id=?""", (target_id, g.user["id"])).fetchone()
+            if target is None:
+                return jsonify(error="Item not found."), 404
+            collection_id = target["collection_id"]
         collection = db.execute(
             "select * from collections where id=? and owner_id=?",
             (collection_id, g.user["id"]),
@@ -195,6 +203,9 @@ def register(host):
             payload = json.loads(request.form.get("metadata", "{}"))
             if not isinstance(payload, dict):
                 raise ValueError("Metadata must be an object.")
+            image_mode = payload.get("image_mode", "append")
+            if target is not None and image_mode not in ("append", "replace"):
+                raise ValueError("Choose append or replace for existing photos.")
             request_id = str(uuid.UUID(request.headers.get("Idempotency-Key", "")))
             item_uuid = str(uuid.UUID(payload.get("item_uuid", "")))
             uid = normalize_uid(payload.get("rfid_uid"))
@@ -209,7 +220,7 @@ def register(host):
             if not 1 <= len(files) <= 30:
                 raise ValueError("Select between 1 and 30 finalized images.")
             fingerprint = hashlib.sha256(
-                json.dumps([collection_id, payload], sort_keys=True).encode()
+                json.dumps([collection_id, payload] if target is None else ["images", target_id, payload], sort_keys=True).encode()
             )
             for upload in files:
                 raw = upload.read()
@@ -249,41 +260,55 @@ def register(host):
                     replayed=True,
                     url=url_for("item_detail", item_id=previous["item_id"]),
                 )
-            schema = collection_schema(host, collection)
-            if schema["issues"]:
-                db.rollback()
-                return jsonify(
-                    error="Collection needs edits.",
-                    issues=schema["issues"],
-                    edit_url=schema["edit_url"],
-                ), 422
-            values = payload.get("values", {})
-            if not isinstance(values, dict):
-                raise ValueError("Field values must be an object.")
-            if set(values) - {str(f["id"]) for f in schema["fields"]}:
-                raise ValueError(
-                    "Collection fields changed. Refresh the collection before uploading."
+            if target is None:
+                schema = collection_schema(host, collection)
+                if schema["issues"]:
+                    db.rollback()
+                    return jsonify(
+                        error="Collection needs edits.",
+                        issues=schema["issues"],
+                        edit_url=schema["edit_url"],
+                    ), 422
+                values = payload.get("values", {})
+                if not isinstance(values, dict):
+                    raise ValueError("Field values must be an object.")
+                if set(values) - {str(f["id"]) for f in schema["fields"]}:
+                    raise ValueError(
+                        "Collection fields changed. Refresh the collection before uploading."
+                    )
+                normalized = {}
+                for field in schema["fields"]:
+                    value = field_value(field, values.get(str(field["id"]), ""))
+                    if field["required"] and not value:
+                        raise ValueError(f"{field['name']} is required.")
+                    normalized[field["id"]] = value
+                if db.execute(
+                    "select 1 from items where item_uuid=? or rfid_uid=?", (item_uuid, uid)
+                ).fetchone():
+                    raise sqlite3.IntegrityError("Duplicate item identity")
+                cursor = db.execute(
+                    "insert into items(collection_id,name,description,item_uuid,rfid_uid) values(?,?,?,?,?)",
+                    (collection_id, name.strip(), description.strip(), item_uuid, uid),
                 )
-            normalized = {}
-            for field in schema["fields"]:
-                value = field_value(field, values.get(str(field["id"]), ""))
-                if field["required"] and not value:
-                    raise ValueError(f"{field['name']} is required.")
-                normalized[field["id"]] = value
-            if db.execute(
-                "select 1 from items where item_uuid=? or rfid_uid=?", (item_uuid, uid)
-            ).fetchone():
-                raise sqlite3.IntegrityError("Duplicate item identity")
-            cursor = db.execute(
-                "insert into items(collection_id,name,description,item_uuid,rfid_uid) values(?,?,?,?,?)",
-                (collection_id, name.strip(), description.strip(), item_uuid, uid),
-            )
-            item_id = cursor.lastrowid
-            for fid, value in normalized.items():
-                db.execute(
-                    "insert into item_values values(?,?,?)", (item_id, fid, value)
-                )
-            host.replace_item_tags(item_id, host.parse_tags(tags))
+                item_id = cursor.lastrowid
+                for fid, value in normalized.items():
+                    db.execute(
+                        "insert into item_values values(?,?,?)", (item_id, fid, value)
+                    )
+                host.replace_item_tags(item_id, host.parse_tags(tags))
+            else:
+                item_id = target_id
+            removed_files = []
+            start_position = 0
+            if target is not None:
+                if image_mode == "replace":
+                    removed_files = [row["filename"] for row in db.execute(
+                        "select filename from item_images where item_id=?", (item_id,))]
+                    db.execute("delete from item_images where item_id=?", (item_id,))
+                else:
+                    start_position = db.execute(
+                        "select coalesce(max(position),-1)+1 from item_images where item_id=?", (item_id,)
+                    ).fetchone()[0]
             for position, (original, data) in enumerate(staged):
                 filename = uuid.uuid4().hex + ".jpg"
                 path = host.UPLOAD_DIR / filename
@@ -291,13 +316,18 @@ def register(host):
                 path.write_bytes(data)
                 db.execute(
                     "insert into item_images(item_id,filename,original_name,position,gallery_position) values(?,?,?,?,?)",
-                    (item_id, filename, original, position, position),
+                    (item_id, filename, original, start_position + position, start_position + position),
                 )
             db.execute(
                 "insert into scan_requests values(?,?,?,?)",
                 (g.user["id"], request_id, digest, item_id),
             )
             db.commit()
+            for filename in removed_files:
+                try:
+                    (host.UPLOAD_DIR / filename).unlink(missing_ok=True)
+                except OSError:
+                    host.app.logger.warning("Could not remove replaced image %s", filename)
             return jsonify(
                 item_id=item_id,
                 replayed=False,
