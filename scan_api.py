@@ -236,11 +236,13 @@ def register(host):
                 db.rollback()
                 if previous["payload_hash"] != digest:
                     return jsonify(
-                        error="This upload was already submitted with different data. Start a new submission."
+                        error="This upload was already submitted with different data. Start a new submission.",
+                        code="submission_changed",
+                        url=url_for("item_detail", item_id=previous["item_id"]) if previous["item_id"] else None,
                     ), 409
                 if previous["item_id"] is None:
                     return jsonify(
-                        error="The previously uploaded item was deleted."
+                        error="The previously uploaded item was deleted.", code="item_deleted",
                     ), 409
                 return jsonify(
                     item_id=previous["item_id"],
@@ -306,7 +308,8 @@ def register(host):
             for path in written:
                 path.unlink(missing_ok=True)
             return jsonify(
-                error="That RFID tag or UUID is already associated with an item. Update its identity in Menagerie."
+                error="That RFID tag or UUID is already associated with an item. Update its identity in Menagerie.",
+                code="identity_conflict",
             ), 409
         except (
             ValueError,

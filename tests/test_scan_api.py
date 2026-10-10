@@ -75,7 +75,9 @@ class ScanTests(DatabaseTest):
                 db.execute("select position from item_images").fetchone()[0], 0
             )
         self.request_id = str(uuid.uuid4())
-        self.assertEqual(self.upload().status_code, 409)
+        conflict = self.upload()
+        self.assertEqual(conflict.status_code, 409)
+        self.assertEqual(conflict.json["code"], "identity_conflict")
         self.assertEqual(
             self.client.get(
                 "/api/v1/items/by-rfid/DEADBEEF", headers=self.headers
