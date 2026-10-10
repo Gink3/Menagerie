@@ -88,18 +88,31 @@ class ScanTests(DatabaseTest):
     def test_existing_photo_append_replace_replay_and_owner_scope(self):
         created = self.upload().json
         item_id = created["item_id"]
+
         def photos(mode):
             image = io.BytesIO()
             Image.new("RGB", (16, 16), "red").save(image, format="JPEG")
-            return self.client.post(f"/api/v1/items/{item_id}/images",
+            return self.client.post(
+                f"/api/v1/items/{item_id}/images",
                 headers={**self.headers, "Idempotency-Key": self.request_id},
-                data={"metadata": json.dumps({**self.payload, "image_mode": mode}),
-                      "images": (io.BytesIO(image.getvalue()), "new.jpg")})
+                data={
+                    "metadata": json.dumps({**self.payload, "image_mode": mode}),
+                    "images": (io.BytesIO(image.getvalue()), "new.jpg"),
+                },
+            )
+
         self.request_id = str(uuid.uuid4())
         self.assertEqual(photos("append").status_code, 201)
         self.assertTrue(photos("append").json["replayed"])
         with host.app.app_context():
-            rows = host.get_db().execute("select * from item_images where item_id=? order by position", (item_id,)).fetchall()
+            rows = (
+                host.get_db()
+                .execute(
+                    "select * from item_images where item_id=? order by position",
+                    (item_id,),
+                )
+                .fetchall()
+            )
             self.assertEqual([r["position"] for r in rows], [0, 1])
             old = [host.UPLOAD_DIR / r["filename"] for r in rows]
         self.request_id = str(uuid.uuid4())
@@ -107,9 +120,84 @@ class ScanTests(DatabaseTest):
         self.assertTrue(all(not p.exists() for p in old))
         self.assertTrue(photos("replace").json["replayed"])
         with host.app.app_context():
-            self.assertEqual(host.get_db().execute("select count(*) from item_images where item_id=?", (item_id,)).fetchone()[0], 1)
+            self.assertEqual(
+                host.get_db()
+                .execute("select count(*) from item_images where item_id=?", (item_id,))
+                .fetchone()[0],
+                1,
+            )
         self.headers = self.key(2)
         self.assertEqual(photos("replace").status_code, 404)
+
+    def test_uuid_lookup_conflict_details_and_photo_validation(self):
+        item_id = self.upload().json["item_id"]
+        found = self.client.get(
+            "/api/v1/items/by-uuid/" + self.payload["item_uuid"], headers=self.headers
+        )
+        self.assertEqual(found.json["item"]["id"], item_id)
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/items/by-uuid/bad", headers=self.headers
+            ).status_code,
+            400,
+        )
+        self.request_id = str(uuid.uuid4())
+        conflict = self.upload()
+        self.assertEqual(conflict.json["item"]["id"], item_id)
+        before = None
+        with host.app.app_context():
+            before = (
+                host.get_db()
+                .execute("select filename from item_images where item_id=?", (item_id,))
+                .fetchone()[0]
+            )
+        response = self.client.post(
+            f"/api/v1/items/{item_id}/images",
+            headers={**self.headers, "Idempotency-Key": self.request_id},
+            data={
+                "metadata": json.dumps({**self.payload, "image_mode": "replace"}),
+                "images": (io.BytesIO(b"broken"), "bad.jpg"),
+            },
+        )
+        self.assertEqual(response.status_code, 422)
+        with host.app.app_context():
+            self.assertTrue((host.UPLOAD_DIR / before).exists())
+            self.assertEqual(
+                host.get_db()
+                .execute("select filename from item_images where item_id=?", (item_id,))
+                .fetchone()[0],
+                before,
+            )
+            host.get_db().execute("insert into users(username,password_hash,role) values('keeper','unused','admin')")
+            host.get_db().execute("update users set role='viewer' where id=1")
+            host.get_db().commit()
+        self.assertEqual(
+            self.client.post(
+                f"/api/v1/items/{item_id}/images", headers=self.headers
+            ).status_code,
+            403,
+        )
+        self.headers = self.key(2)
+        self.assertEqual(
+            self.client.get(
+                "/api/v1/items/by-uuid/" + self.payload["item_uuid"],
+                headers=self.headers,
+            ).status_code,
+            404,
+        )
+        # A globally conflicting tag must not disclose another owner's item.
+        with host.app.app_context():
+            db = host.get_db()
+            db.execute(
+                "insert into fields(collection_id,name,field_type) values(2,'Mini ID','text')"
+            )
+            db.commit()
+        payload = {**self.payload, "values": {"3": "002"}}
+        self.request_id = str(uuid.uuid4())
+        conflict = self.upload(collection=2, payload=payload)
+        self.assertEqual(conflict.status_code, 409)
+        self.assertIsNone(conflict.json["item"])
+        self.assertIsNone(conflict.json["url"])
 
     def test_invalid_images_values_and_required_schema(self):
         self.assertEqual(self.upload(raw=b"not an image").status_code, 422)

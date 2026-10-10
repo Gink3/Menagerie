@@ -119,8 +119,12 @@ def collection_schema(host, collection):
             {"name": "tags", "type": "text", "required": False},
         ],
         identity={"uuid": True, "rfid": True},
-        upload_limits={"max_images": 30, "max_image_pixels": 40_000_000,
-                       "max_name_length": 500, "max_request_bytes": host.app.config["MAX_CONTENT_LENGTH"]},
+        upload_limits={
+            "max_images": 30,
+            "max_image_pixels": 40_000_000,
+            "max_name_length": 500,
+            "max_request_bytes": host.app.config["MAX_CONTENT_LENGTH"],
+        },
     )
 
 
@@ -179,6 +183,27 @@ def register(host):
             return jsonify(error="Tag not found."), 404
         return jsonify(item=dict(row), url=url_for("edit_item", item_id=row["id"]))
 
+    @bp.route("/items/by-uuid/<item_uuid>")
+    @auth
+    def by_uuid(item_uuid):
+        try:
+            item_uuid = str(uuid.UUID(item_uuid))
+        except ValueError:
+            return jsonify(error="Enter a valid UUID."), 400
+        row = (
+            host.get_db()
+            .execute(
+                """select items.id,items.collection_id,items.name,items.item_uuid,items.rfid_uid
+            from items join collections on collections.id=items.collection_id
+            where items.item_uuid=? and collections.owner_id=?""",
+                (item_uuid, g.user["id"]),
+            )
+            .fetchone()
+        )
+        if row is None:
+            return jsonify(error="Item not found."), 404
+        return jsonify(item=dict(row), url=url_for("edit_item", item_id=row["id"]))
+
     @bp.route("/items/<int:target_id>/images", methods=["POST"])
     @bp.route("/collections/<int:collection_id>/items", methods=["POST"])
     @auth
@@ -186,8 +211,11 @@ def register(host):
         db = host.get_db()
         target = None
         if target_id is not None:
-            target = db.execute("""select items.* from items join collections on collections.id=items.collection_id
-                where items.id=? and collections.owner_id=?""", (target_id, g.user["id"])).fetchone()
+            target = db.execute(
+                """select items.* from items join collections on collections.id=items.collection_id
+                where items.id=? and collections.owner_id=?""",
+                (target_id, g.user["id"]),
+            ).fetchone()
             if target is None:
                 return jsonify(error="Item not found."), 404
             collection_id = target["collection_id"]
@@ -222,7 +250,12 @@ def register(host):
             if not 1 <= len(files) <= 30:
                 raise ValueError("Select between 1 and 30 finalized images.")
             fingerprint = hashlib.sha256(
-                json.dumps([collection_id, payload] if target is None else ["images", target_id, payload], sort_keys=True).encode()
+                json.dumps(
+                    [collection_id, payload]
+                    if target is None
+                    else ["images", target_id, payload],
+                    sort_keys=True,
+                ).encode()
             )
             for upload in files:
                 raw = upload.read()
@@ -251,11 +284,14 @@ def register(host):
                     return jsonify(
                         error="This upload was already submitted with different data. Start a new submission.",
                         code="submission_changed",
-                        url=url_for("item_detail", item_id=previous["item_id"]) if previous["item_id"] else None,
+                        url=url_for("item_detail", item_id=previous["item_id"])
+                        if previous["item_id"]
+                        else None,
                     ), 409
                 if previous["item_id"] is None:
                     return jsonify(
-                        error="The previously uploaded item was deleted.", code="item_deleted",
+                        error="The previously uploaded item was deleted.",
+                        code="item_deleted",
                     ), 409
                 return jsonify(
                     item_id=previous["item_id"],
@@ -285,7 +321,8 @@ def register(host):
                         raise ValueError(f"{field['name']} is required.")
                     normalized[field["id"]] = value
                 if db.execute(
-                    "select 1 from items where item_uuid=? or rfid_uid=?", (item_uuid, uid)
+                    "select 1 from items where item_uuid=? or rfid_uid=?",
+                    (item_uuid, uid),
                 ).fetchone():
                     raise sqlite3.IntegrityError("Duplicate item identity")
                 cursor = db.execute(
@@ -304,12 +341,18 @@ def register(host):
             start_position = 0
             if target is not None:
                 if image_mode == "replace":
-                    removed_files = [row["filename"] for row in db.execute(
-                        "select filename from item_images where item_id=?", (item_id,))]
+                    removed_files = [
+                        row["filename"]
+                        for row in db.execute(
+                            "select filename from item_images where item_id=?",
+                            (item_id,),
+                        )
+                    ]
                     db.execute("delete from item_images where item_id=?", (item_id,))
                 else:
                     start_position = db.execute(
-                        "select coalesce(max(position),-1)+1 from item_images where item_id=?", (item_id,)
+                        "select coalesce(max(position),-1)+1 from item_images where item_id=?",
+                        (item_id,),
                     ).fetchone()[0]
             for position, (original, data) in enumerate(staged):
                 filename = uuid.uuid4().hex + ".jpg"
@@ -318,7 +361,13 @@ def register(host):
                 path.write_bytes(data)
                 db.execute(
                     "insert into item_images(item_id,filename,original_name,position,gallery_position) values(?,?,?,?,?)",
-                    (item_id, filename, original, start_position + position, start_position + position),
+                    (
+                        item_id,
+                        filename,
+                        original,
+                        start_position + position,
+                        start_position + position,
+                    ),
                 )
             db.execute(
                 "insert into scan_requests values(?,?,?,?)",
@@ -329,7 +378,9 @@ def register(host):
                 try:
                     (host.UPLOAD_DIR / filename).unlink(missing_ok=True)
                 except OSError:
-                    host.app.logger.warning("Could not remove replaced image %s", filename)
+                    host.app.logger.warning(
+                        "Could not remove replaced image %s", filename
+                    )
             return jsonify(
                 item_id=item_id,
                 replayed=False,
@@ -339,7 +390,15 @@ def register(host):
             db.rollback()
             for path in written:
                 path.unlink(missing_ok=True)
+            conflict = db.execute(
+                """select items.id,items.collection_id,items.name,items.item_uuid,items.rfid_uid
+                from items join collections on collections.id=items.collection_id
+                where (items.item_uuid=? or items.rfid_uid=?) and collections.owner_id=? limit 1""",
+                (item_uuid, uid, g.user["id"]),
+            ).fetchone()
             return jsonify(
+                item=dict(conflict) if conflict else None,
+                url=url_for("edit_item", item_id=conflict["id"]) if conflict else None,
                 error="That RFID tag or UUID is already associated with an item. Update its identity in Menagerie.",
                 code="identity_conflict",
             ), 409
