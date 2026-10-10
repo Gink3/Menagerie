@@ -174,3 +174,19 @@ Choose **Dropdown** when adding a field in the collection editor or Admin → Fi
 On a collection page, expand **<field name> options** and use **Add option** to extend the list. Collection managers can add options; viewers cannot. Collection filters also use the dropdown choices and match the selected option exactly. Existing options in use cannot be removed from a field definition, preventing saved item values from becoming invalid.
 
 Migration 16 adds dropdown option storage. Restart Menagerie after updating. In Mini Scan, close item dialogs and refresh collections to load newly added options; reopening a local draft refreshes its field definitions without changing its UUID.
+
+Capture uploads can include an ordered `captures` array alongside images (use `null`
+for imported images). Version 1 records contain `captured_at` with timezone, camera,
+native width/height, optional lighting state (enabled, brightness 0–100, GPIO,
+PWM frequency), and optional focus method, score and normalized ROI. Menagerie
+validates records atomically and creates standardized `Capture:` fields only for
+collections receiving capture metadata. These **Advanced** fields summarize the
+latest remaining captured photo; per-photo records remain authoritative. Ordinary
+item editing preserves the automatic values. Use **Show advanced fields** in the
+menu to include them in tables, filters, item details and collection settings.
+The preference lasts for the browser session. Restart Menagerie to apply migration 17.
+
+`POST /api/v1/collections/<id>/capture-fields` explicitly ensures the canonical
+fields; `GET /api/v1/items/<id>/captures` retrieves ordered per-photo records.
+Both require an owner's API key. Conflicting existing field names/types produce
+an actionable 422 response rather than changing unrelated collection fields.
