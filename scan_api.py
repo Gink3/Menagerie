@@ -8,6 +8,7 @@ import re
 import sqlite3
 import uuid
 import dropdown_fields
+import capture_fields
 from datetime import date, datetime
 
 from flask import Blueprint, g, jsonify, request, url_for
@@ -162,6 +163,24 @@ def register(host):
         )
         return jsonify(collections=[collection_schema(host, row) for row in rows])
 
+    @bp.route("/collections/<int:collection_id>/capture-fields", methods=["POST"])
+    @auth
+    def ensure_capture_fields(collection_id):
+        db = host.get_db()
+        collection = db.execute("select * from collections where id=? and owner_id=?", (collection_id, g.user["id"])).fetchone()
+        if collection is None:
+            return jsonify(error="Collection not found."), 404
+        if g.user["role"] not in ("collector", "admin"):
+            return jsonify(error="This account cannot configure capture fields."), 403
+        try:
+            db.execute("begin immediate")
+            capture_fields.ensure(db, collection_id)
+            db.commit()
+        except ValueError as error:
+            db.rollback()
+            return jsonify(error=str(error), edit_url=url_for("edit_collection", collection_id=collection_id)), 422
+        return jsonify(collection=collection_schema(host, collection))
+
     @bp.route("/items/by-rfid/<uid>")
     @auth
     def by_rfid(uid):
@@ -203,6 +222,16 @@ def register(host):
         if row is None:
             return jsonify(error="Item not found."), 404
         return jsonify(item=dict(row), url=url_for("edit_item", item_id=row["id"]))
+
+    @bp.route("/items/<int:item_id>/captures")
+    @auth
+    def captures_for_item(item_id):
+        db = host.get_db()
+        owned = db.execute("select 1 from items join collections on collections.id=items.collection_id where items.id=? and collections.owner_id=?", (item_id, g.user["id"])).fetchone()
+        if not owned:
+            return jsonify(error="Item not found."), 404
+        return jsonify(images=[dict(image_id=row["id"], position=row["position"], capture=json.loads(row["capture_metadata"]) if row["capture_metadata"] else None)
+                               for row in db.execute("select id,position,capture_metadata from item_images where item_id=? order by position,id", (item_id,))])
 
     @bp.route("/items/<int:target_id>/images", methods=["POST"])
     @bp.route("/collections/<int:collection_id>/items", methods=["POST"])
@@ -249,6 +278,7 @@ def register(host):
             files = request.files.getlist("images")
             if not 1 <= len(files) <= 30:
                 raise ValueError("Select between 1 and 30 finalized images.")
+            captures = capture_fields.validate(payload.get("captures"), len(files))
             fingerprint = hashlib.sha256(
                 json.dumps(
                     [collection_id, payload]
@@ -298,6 +328,8 @@ def register(host):
                     replayed=True,
                     url=url_for("item_detail", item_id=previous["item_id"]),
                 )
+            if any(captures):
+                capture_fields.ensure(db, collection_id)
             if target is None:
                 schema = collection_schema(host, collection)
                 if schema["issues"]:
@@ -360,15 +392,18 @@ def register(host):
                 written.append(path)
                 path.write_bytes(data)
                 db.execute(
-                    "insert into item_images(item_id,filename,original_name,position,gallery_position) values(?,?,?,?,?)",
+                    "insert into item_images(item_id,filename,original_name,position,gallery_position,capture_metadata) values(?,?,?,?,?,?)",
                     (
                         item_id,
                         filename,
                         original,
                         start_position + position,
                         start_position + position,
+                        json.dumps(captures[position]) if captures[position] is not None else None,
                     ),
                 )
+            if any(captures) or target is not None:
+                capture_fields.refresh_summary(db, item_id, collection_id)
             db.execute(
                 "insert into scan_requests values(?,?,?,?)",
                 (g.user["id"], request_id, digest, item_id),
@@ -404,6 +439,7 @@ def register(host):
             ), 409
         except (
             ValueError,
+            KeyError,
             TypeError,
             AttributeError,
             UnidentifiedImageError,

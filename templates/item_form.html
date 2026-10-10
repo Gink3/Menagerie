@@ -9,7 +9,7 @@
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
   <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
   <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
-  {% for field in fields %}
+  {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}
     {% set field_value = values.get(field.id, '') if values is defined else '' %}
     {% if field.field_type == "multiline" %}
       <label>{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
@@ -31,6 +31,11 @@
       {% endif %}
     {% endif %}
   {% endfor %}
+  {% if show_advanced_fields and item %}
+    <details><summary>Advanced capture settings (recorded automatically)</summary><dl>
+    {% for field in fields if field.capture_key %}<dt>{{ field.name }}</dt><dd>{{ values.get(field.id, '') or 'Unknown' }}</dd>{% endfor %}
+    </dl></details>
+  {% endif %}
   <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
   <label>Images<input name="images" type="file" accept="image/*" multiple></label>
   <button type="submit">Save item</button>

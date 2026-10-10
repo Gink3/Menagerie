@@ -2,6 +2,7 @@ import os
 import sys
 import api_keys
 import scan_api
+import capture_fields
 import dropdown_fields
 import json
 import re
@@ -13,7 +14,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from functools import wraps
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlencode
 
 from flask import (
     Flask,
@@ -592,6 +593,7 @@ MIGRATIONS = (
     (14, "api_keys", api_keys.migrate),
     (15, "mini_scan_identity", scan_api.migrate),
     (16, "dropdown_fields", dropdown_fields.migrate),
+    (17, "capture_fields", capture_fields.migrate),
 )
 
 
@@ -1114,6 +1116,8 @@ def enforce_secure_config():
 def load_current_user():
     enforce_secure_config()
     init_db()
+    if request.method == "GET" and request.args.get("advanced") in ("0", "1"):
+        session["show_advanced_fields"] = request.args["advanced"] == "1"
     user_id = session.get("user_id")
     g.user = None
     if user_id:
@@ -1231,7 +1235,12 @@ def clear_stale_login_session():
 
 @app.context_processor
 def inject_security_helpers():
-    return {"csrf_token": csrf_token, "csrf_field": csrf_field, "has_capability": has_capability}
+    advanced = bool(session.get("show_advanced_fields", False))
+    args = request.args.to_dict(flat=False)
+    args["advanced"] = ["0" if advanced else "1"]
+    return {"csrf_token": csrf_token, "csrf_field": csrf_field, "has_capability": has_capability,
+            "show_advanced_fields": advanced,
+            "advanced_toggle_url": request.path + "?" + urlencode(args, doseq=True)}
 
 
 def csrf_field():
@@ -1974,6 +1983,8 @@ def delete_image(image_id):
     if not user_can_manage_image(image):
         abort(403)
     get_db().execute("delete from item_images where id = ?", (image["id"],))
+    item = get_item(image["item_id"])
+    capture_fields.refresh_summary(get_db(), item["id"], item["collection_id"])
     get_db().commit()
     try:
         (UPLOAD_DIR / image["filename"]).unlink()
@@ -1998,6 +2009,8 @@ def delete_selected_item_image(item_id):
     if image is None:
         abort(404)
     get_db().execute("delete from item_images where id = ?", (image["id"],))
+    item = get_item(image["item_id"])
+    capture_fields.refresh_summary(get_db(), item["id"], item["collection_id"])
     get_db().commit()
     try:
         (UPLOAD_DIR / image["filename"]).unlink()
@@ -2263,7 +2276,7 @@ def new_item(collection):
         for field in fields:
             db.execute(
                 "insert into item_values (item_id, field_id, value) values (?, ?, ?)",
-                (item_id, field["id"], field_form_value(field, request.form)),
+                (item_id, field["id"], "" if field["capture_key"] else field_form_value(field, request.form)),
             )
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
@@ -2313,6 +2326,7 @@ def item_detail(item_id):
         values=values,
         images=images,
         tags=get_item_tags(item_id),
+        captures={image["id"]: json.loads(image["capture_metadata"]) for image in images if image["capture_metadata"]} if can_manage else {},
         can_manage=can_manage,
     )
 
@@ -2334,6 +2348,8 @@ def edit_item(item_id):
             (request.form["name"].strip(), request.form.get("description", "").strip(), *scan_api.identity(request.form), item_id),
         )
         for field in fields:
+            if field["capture_key"] or (field["advanced"] and not session.get("show_advanced_fields")):
+                continue
             db.execute(
                 """
                 insert into item_values (item_id, field_id, value) values (?, ?, ?)
@@ -2381,6 +2397,7 @@ def duplicate_item(item_id):
         )
     tags = get_item_tags(item_id)
     replace_item_tags(new_item_id, tags)
+    capture_fields.refresh_summary(db, new_item_id, item["collection_id"])
     db.commit()
     flash("Item duplicated.", "success")
     return redirect(url_for("edit_item", item_id=new_item_id))

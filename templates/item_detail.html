@@ -41,6 +41,9 @@
             <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
             <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
             <a href="{{ url_for('image_settings', image_id=image.id) }}">Frame image</a>
+            {% if show_advanced_fields and image.id in captures %}
+              <details><summary>Advanced capture record</summary><pre>{{ captures[image.id]|tojson(indent=2) }}</pre></details>
+            {% endif %}
           </figcaption>
         </figure>
       {% else %}
@@ -70,9 +73,9 @@
     <dl>
       <dt>UUID</dt>
       <dd class="field-value">{{ item.item_uuid }}</dd>
-      {% for field in fields %}
+      {% for field in fields if show_advanced_fields or not field.advanced %}
         <dt>{{ field.name }}</dt>
-        <dd class="field-value">{{ values.get(field.id, "")|display_field_value(field.field_type) }}</dd>
+        <dd class="field-value">{{ "Unknown" if field.capture_key and not values.get(field.id, "") else values.get(field.id, "")|display_field_value(field.field_type) }}</dd>
       {% endfor %}
     </dl>
   </div>

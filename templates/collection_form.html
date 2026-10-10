@@ -23,7 +23,7 @@
     <div id="collection-field-list" class="collection-field-list">
       {% if collection %}
         {% for field in fields %}
-          <div class="collection-field-row">
+          <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
             <input name="field_id" type="hidden" value="{{ field.id }}">
             <label>Field name<input name="field_name" value="{{ field.name }}" required></label>
             <label>Type
@@ -37,7 +37,7 @@
           </div>
         {% endfor %}
       {% else %}
-        <div class="collection-field-row">
+        <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
           <input name="field_id" type="hidden" value="">
           <label>Field name<input name="field_name" placeholder="e.g. Manufacturer"></label>
           <label>Type
@@ -56,7 +56,7 @@
   <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
 </form>
 <template id="collection-field-template">
-  <div class="collection-field-row">
+  <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
     <input name="field_id" type="hidden" value="">
     <label>Field name<input name="field_name" placeholder="e.g. Manufacturer"></label>
     <label>Type
