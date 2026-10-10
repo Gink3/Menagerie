@@ -130,13 +130,23 @@ The Mini Scan companion in `../menagerie_capture` uses these endpoints:
 | `GET /api/v1/me` | Authenticated account identity |
 | `GET /api/v1/collections` | Owned collections, ordered custom field definitions, core fields, and required-edit issues |
 | `GET /api/v1/items/by-rfid/<uid>` | Find an existing owned item and its web edit URL |
+| `GET /api/v1/items/by-uuid/<uuid>` | Find an existing owned untagged item |
 | `POST /api/v1/collections/<id>/items` | Create one item with ordered finalized photos |
+| `POST /api/v1/items/<id>/images` | Append or replace ordered photos on an owned item |
 
 Creation uses multipart form data: `metadata` is a JSON object containing `item_uuid`, `rfid_uid`, `name`, `description`, `tags` (comma-separated), and `values` (field ID strings mapped to values). Repeated `images` parts specify display order. At least one image and a UUID are required. RFID UID is optional; when supplied it must be a valid 4/7/10-byte UID. Custom field values are validated against current definitions. Images are decoded, orientation-corrected, and re-encoded to JPEG; malformed images are rejected. The per-image limit is 40 megapixels, with at most 30 selected photos.
 
 Send a UUID `Idempotency-Key` header. Retrying the same request with identical metadata and image bytes returns the original item; changed payloads or duplicate RFID/UUID assignments return 409. A failed database transaction removes its newly written images. If an uploaded item was deleted, retrying does not resurrect it. Keys are never accepted via query parameters. API replies use `Cache-Control: no-store`.
 
 UUID is a built-in field for every collection, displayed in collection tables, gallery cards, item details, and the API collection schema. Collection search and sorting support UUID. Every item has a unique UUID after migration. The web item form can create an untagged item with an automatically generated UUID, then attach/replace its RFID UID or change its UUID later. Existing items receive UUIDs automatically; duplicating an item produces a new UUID without copying its RFID association. Mini Scan can create items without RFID tags and preserves their generated UUIDs across retries. RFID UID and UUID uniqueness currently apply across the installation.
+
+### Capture recovery and existing photos
+
+Collection schemas advertise `upload_limits` (photo count, image pixels, name length, and request bytes) for companion preflight checks. Server validation still applies, and reverse proxy limits must be configured consistently.
+
+Photo updates use the same multipart metadata/images format and UUID `Idempotency-Key` as creation, with `image_mode` set to `append` (default) or `replace`. Include the item's existing `item_uuid` and a name in metadata. Only photos change; metadata fields are not updated. Append continues display order; replace swaps the photo list transactionally and removes replaced files after commit. Identical retries replay the original result without appending twice or replacing again. Only the owner with an admin/collector role may update photos.
+
+Conflict replies include `code`: `identity_conflict`, `submission_changed`, or `item_deleted`. For identity conflicts, an owned conflicting item and its edit URL are returned when available; another owner's item is never disclosed. Mini Scan keeps conflicting drafts and offers explicit recovery, while uncertain network/server failures retain the original frozen submission for retry. Offline Capture drafts use cached schemas and defer tag lookup until upload.
 
 ### Collection requirements
 
