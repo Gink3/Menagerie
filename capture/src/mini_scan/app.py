@@ -23,8 +23,8 @@ from .storage import DATA, Store, write_json
 BG = "#242426"
 PANEL = "#303034"
 TEXT = "#eeeeef"
-PURPLE = "#7851a9"
-ACCENT = "#a98bd0"
+PURPLE = "#82449a"
+ACCENT = "#b477cc"
 
 
 def theme(root):
@@ -44,7 +44,7 @@ def theme(root):
         ".", background=BG, foreground=TEXT, fieldbackground=PANEL, font=("Sans", -22)
     )
     style.configure("TButton", background=PURPLE, padding=(14, 10))
-    style.map("TButton", background=[("active", "#9068bc"), ("disabled", PANEL)])
+    style.map("TButton", background=[("active", "#9756ae"), ("disabled", PANEL)])
     style.configure("TEntry", fieldbackground=PANEL, insertcolor=TEXT, padding=8)
     style.configure(
         "TCombobox", fieldbackground=PANEL, arrowcolor=TEXT, padding=8, arrowsize=24
