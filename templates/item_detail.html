@@ -7,20 +7,48 @@
   </div>
   {% if can_manage %}
     <div class="actions">
-      <form method="post" action="{{ url_for('duplicate_item', item_id=item.id) }}">
-        {{ csrf_field()|safe }}
-        <button class="subtle" type="submit">Duplicate</button>
-      </form>
-      <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit</a>
-      <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}" onsubmit="return confirm('Delete this item and all of its images? This cannot be undone.');">
-        {{ csrf_field()|safe }}
-        <button class="danger" type="submit">Delete</button>
-      </form>
+      <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit item</a>
+      <details class="action-menu">
+        <summary class="button subtle">More actions</summary>
+        <div class="action-menu-content">
+          <form method="post" action="{{ url_for('duplicate_item', item_id=item.id) }}">
+            {{ csrf_field()|safe }}<button class="subtle" type="submit">Duplicate item</button>
+          </form>
+          <form method="post" action="{{ url_for('delete_item', item_id=item.id) }}" onsubmit="return confirm('Delete this item and all of its images? This cannot be undone.');">
+            {{ csrf_field()|safe }}<button class="danger" type="submit">Delete item</button>
+          </form>
+        </div>
+      </details>
     </div>
   {% endif %}
 </div>
-<section class="detail-layout">
-  {% if can_manage %}
+<section class="detail-layout item-detail-layout">
+  <div class="item-photography">
+    {% if images %}
+      <div class="item-photo-stage" id="item-photo-stage">
+        {% for image in images %}
+        <div class="item-hero-frame" {% if not loop.first %}hidden{% endif %}>
+          <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+        </div>
+        {% endfor %}
+      </div>
+      {% if images|length > 1 %}
+      <div class="item-photo-thumbnails" role="group" aria-label="Item photographs">
+        {% for image in images %}
+        <button type="button" data-photo-index="{{ loop.index0 }}" aria-label="View image {{ loop.index }}: {{ image.original_name }}" aria-controls="item-photo-stage" aria-pressed="{{ 'true' if loop.first else 'false' }}">
+          <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="" loading="lazy">
+        </button>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <p class="meta" id="item-photo-status" aria-live="polite">Image 1 of {{ images|length }}</p>
+    {% else %}
+      <div class="image-placeholder item-photo-empty">No photographs yet{% if can_manage %}<a href="{{ url_for('edit_item', item_id=item.id) }}">Add images</a>{% endif %}</div>
+    {% endif %}
+  {% if can_manage and images %}
+    <details class="image-management">
+    <summary>Manage images <span class="meta">{{ images|length }}</span></summary>
+    <p class="meta">Choose gallery images, drag to reorder, or select an image to delete.</p>
     <div class="item-image-manager">
     <div class="image-selection-toolbar" aria-label="Selected image actions">
       <span class="meta" id="selected-image-status">Select an image to manage it.</span>
@@ -33,7 +61,7 @@
     <form class="image-strip" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
       {{ csrf_field()|safe }}
       {% for image in images %}
-        <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true">
+        <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true" tabindex="0" aria-label="Manage image: {{ image.original_name }}">
           <div class="cropped-image">
             <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
           </div>
@@ -54,21 +82,12 @@
       {% endif %}
     </form>
     </div>
-  {% else %}
-    <div class="image-strip">
-      {% for image in images %}
-        <figure>
-          <div class="cropped-image">
-            <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
-          </div>
-        </figure>
-      {% else %}
-        <div class="image-placeholder">No images</div>
-      {% endfor %}
-    </div>
+    </details>
   {% endif %}
-  <div class="panel stack">
-    <p>{{ item.description }}</p>
+  </div>
+  <div class="panel stack item-metadata">
+    <h2>About this item</h2>
+    {% if item.description %}<p class="item-description">{{ item.description }}</p>{% endif %}
     <div class="tags">{% for tag in tags %}<span>{{ tag }}</span>{% endfor %}</div>
     <dl>
       <dt>UUID</dt>
@@ -80,6 +99,19 @@
     </dl>
   </div>
 </section>
+<script>
+  document.querySelectorAll("[data-photo-index]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.photoIndex);
+      const frames = document.querySelectorAll(".item-hero-frame");
+      frames.forEach((frame, frameIndex) => { frame.hidden = frameIndex !== index; });
+      document.querySelectorAll("[data-photo-index]").forEach((other) => {
+        other.setAttribute("aria-pressed", String(other === button));
+      });
+      document.getElementById("item-photo-status").textContent = `Image ${index + 1} of ${frames.length}`;
+    });
+  });
+</script>
 {% if can_manage %}
   <script>
     const galleryImageForm = document.querySelector(".image-strip");
@@ -145,6 +177,12 @@
         selectedImageId.value = row.dataset.imageId;
         deleteSelectedImage.disabled = false;
         selectedImageStatus.textContent = "Image selected.";
+      });
+      row.addEventListener("keydown", (event) => {
+        if (event.target === row && (event.key === "Enter" || event.key === " ")) {
+          event.preventDefault();
+          row.click();
+        }
       });
       row.addEventListener("dragstart", (event) => {
         if (event.target.closest("input, a, button, select, textarea")) {

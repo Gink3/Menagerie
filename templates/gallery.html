@@ -3,12 +3,15 @@
 {% block content %}
 <div class="page-head">
   <div>
+    <span class="page-eyebrow">{% if owner %}Collector gallery{% else %}The Menagerie{% endif %}</span>
     <h1>{% if owner %}{{ owner.username }}'s gallery{% else %}Gallery{% endif %}</h1>
     <p>{% if owner %}A tile layout of selected collection images.{% else %}Selected gallery images from across Menagerie.{% endif %}</p>
   </div>
+  <div class="actions"><span class="meta">{{ images|length }} {{ 'item' if images|length == 1 else 'items' }}</span>
   {% if editable %}
     <button class="button subtle" id="save-gallery-layout" type="button">Save layout</button>
   {% endif %}
+  </div>
 </div>
 
 <div class="tile-gallery{% if editable %} editable{% endif %}" data-editable="{{ 'true' if editable else 'false' }}">

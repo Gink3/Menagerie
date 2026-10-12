@@ -1826,7 +1826,12 @@ def index():
 def collections_index():
     collections = get_db().execute(
         """
-        select collections.*, users.username as owner_username
+        select collections.*, users.username as owner_username,
+            (select count(*) from items where items.collection_id = collections.id) as item_count,
+            (select item_images.filename from item_images
+             join items on items.id = item_images.item_id
+             where items.collection_id = collections.id
+             order by items.name, item_images.position, item_images.id limit 1) as preview_filename
         from collections
         left join users on users.id = collections.owner_id
         where collections.owner_id = ?

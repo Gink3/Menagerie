@@ -2,7 +2,8 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>My Collections</h1>
+    <span class="page-eyebrow">Your workspace</span>
+    <h1>My collections</h1>
     <p>Track your physical items with custom fields, tags, and images.</p>
   </div>
   {% if can_create %}
@@ -11,10 +12,13 @@
 </div>
 <div class="collection-grid">
   {% for collection in collections %}
-    <a class="card" href="{{ url_for('collection_view', collection_id=collection.id) }}">
+    <a class="card collection-card" href="{{ url_for('collection_view', collection_id=collection.id) }}">
+      {% if collection.preview_filename %}<img class="collection-cover" src="{{ url_for('uploaded_file', filename=collection.preview_filename) }}" alt="" loading="lazy">{% else %}<div class="collection-cover collection-cover-empty" aria-hidden="true">{{ collection.name[:1]|upper }}</div>{% endif %}
+      <div class="collection-card-copy">
       <h2>{{ collection.name }}</h2>
       <p>{{ collection.description or "No description yet." }}</p>
-      <span class="meta">Owner: {{ collection.owner_username or "Unassigned" }}</span>
+      <span class="meta">{{ collection.item_count }} {{ 'item' if collection.item_count == 1 else 'items' }} · {{ collection.owner_username or "Unassigned" }}</span>
+      </div>
     </a>
   {% else %}
     <div class="empty">No collections yet.</div>
