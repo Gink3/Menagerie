@@ -262,9 +262,15 @@ label { color: var(--muted); display: grid; gap: 6px; font-size: 14px; font-weig
 }
 .collection-fields { border: 0; margin: 0; padding: 0; }
 .collection-fields legend { font-weight: 700; margin-bottom: 6px; padding: 0; }
-.collection-field-list { display: grid; gap: 10px; margin: 12px 0; }
-.collection-field-row { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr) minmax(180px, .45fr); }
+.collection-field-list { display: grid; gap: 18px; margin: 12px 0; }
+.collection-field-row { align-items: start; display: grid; gap: 8px 12px; grid-template-columns: minmax(0, 1fr) minmax(180px, .45fr); }
+.collection-field-row + .collection-field-row { border-top: 1px solid var(--line); padding-top: 18px; }
 .collection-field-row label { margin: 0; }
+.collection-field-row .dropdown-options, .field-type-hint { grid-column: 1 / -1; }
+.collection-field-row .dropdown-options[hidden] { display: none; }
+.collection-field-row .field-type-hint { margin: 0; }
+.collection-field-row .field-hint { font-weight: 400; }
+.remove-collection-field { justify-self: start; }
 @media (max-width: 540px) { .collection-field-row { grid-template-columns: 1fr; } }
 .table-wrap { background: var(--panel); border: 1px solid var(--line); overflow: auto; }
 table { border-collapse: collapse; min-width: 760px; width: 100%; }

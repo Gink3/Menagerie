@@ -1,4 +1,23 @@
 {% extends "base.html" %}
+{% macro field_row(field=none) %}
+  <div class="collection-field-row" {% if field and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
+    <input name="field_id" type="hidden" value="{{ field.id if field else '' }}">
+    <label>Field name<input name="field_name" value="{{ field.name if field else '' }}" placeholder="e.g. Manufacturer" {% if field %}required{% endif %}></label>
+    <label>Field type
+      <select name="field_type">
+        {% for value, label in field_type_choices %}
+          <option value="{{ value }}" {% if field and field.field_type == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <p class="meta field-type-hint"></p>
+    <label class="dropdown-options" {% if not field or field.field_type != 'dropdown' %}hidden{% endif %}>Options
+      <span class="meta field-hint">Enter one option per line.</span>
+      <textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field else '' }}</textarea>
+    </label>
+    {% if not field %}<button type="button" class="subtle remove-collection-field">Remove</button>{% endif %}
+  </div>
+{% endmacro %}
 {% block content %}
 <div class="page-head">
   <h1>{% if collection %}Edit{% else %}New{% endif %} collection</h1>
@@ -18,73 +37,79 @@
   {% endif %}
   <fieldset class="collection-fields">
     <legend>{% if collection %}Fields{% else %}Initial fields{% endif %}</legend>
-    <p class="meta">UUID is included automatically for every item in every collection. You do not need to add it as a custom field.</p>
-    <p class="meta">Name each field, then choose how its value should be entered.</p>
+    <p class="meta">Name each field and choose how its value is entered. UUID is included automatically.</p>
     <div id="collection-field-list" class="collection-field-list">
       {% if collection %}
-        {% for field in fields %}
-          <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
-            <input name="field_id" type="hidden" value="{{ field.id }}">
-            <label>Field name<input name="field_name" value="{{ field.name }}" required></label>
-            <label>Type
-              <select name="field_type">
-                {% for value, label in field_type_choices %}
-                  <option value="{{ value }}" {% if field.field_type == value %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </label>
-    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
-          </div>
-        {% endfor %}
+        {% for field in fields %}{{ field_row(field) }}{% endfor %}
       {% else %}
-        <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
-          <input name="field_id" type="hidden" value="">
-          <label>Field name<input name="field_name" placeholder="e.g. Manufacturer"></label>
-          <label>Type
-            <select name="field_type">
-              {% for value, label in field_type_choices %}
-                <option value="{{ value }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          </label>
-    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
-        </div>
+        {{ field_row() }}
       {% endif %}
     </div>
-    <button type="button" class="subtle" id="add-collection-field">New Field</button>
+    <button type="button" class="subtle" id="add-collection-field">Add field</button>
   </fieldset>
   <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
 </form>
-<template id="collection-field-template">
-  <div class="collection-field-row" {% if field is defined and field.advanced and not show_advanced_fields %}style="display:none"{% endif %}>
-    <input name="field_id" type="hidden" value="">
-    <label>Field name<input name="field_name" placeholder="e.g. Manufacturer"></label>
-    <label>Type
-      <select name="field_type">
-        {% for value, label in field_type_choices %}
-          <option value="{{ value }}">{{ label }}</option>
-        {% endfor %}
-      </select>
-    </label>
-    <label class="dropdown-options">Dropdown options (one per line)<textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field is defined else '' }}</textarea></label>
-  </div>
-</template>
+<template id="collection-field-template">{{ field_row() }}</template>
 <script>
   const fieldList = document.getElementById("collection-field-list");
   const fieldTemplate = document.getElementById("collection-field-template");
-  const updateOptions = (row) => {
-    const enabled = row.querySelector('[name="field_type"]').value === "dropdown";
-    const label = row.querySelector(".dropdown-options");
-    label.hidden = !enabled;
-    label.querySelector("textarea").required = enabled;
+  const typeHints = {
+    text: "Enter a short value on one line.",
+    multiline: "Enter longer text across multiple lines.",
+    number: "Enter a numeric value.",
+    date: "Choose a calendar date.",
+    timestamp: "Record a date, displayed as a timestamp.",
+    url: "Enter a web address.",
+    checkbox: "Mark a value as yes or no.",
+    dropdown: "Choose one option from a list."
   };
-  fieldList.querySelectorAll(".collection-field-row").forEach(updateOptions);
-  fieldList.addEventListener("change", (event) => {
-    if (event.target.name === "field_type") updateOptions(event.target.closest(".collection-field-row"));
-  });
+  let nextFieldId = 0;
+  const updateField = (row) => {
+    const name = row.querySelector('[name="field_name"]');
+    const type = row.querySelector('[name="field_type"]');
+    const options = row.querySelector('[name="field_options"]');
+    const dropdown = type.value === "dropdown";
+    const existing = Boolean(row.querySelector('[name="field_id"]').value);
+    const active = existing || type.value !== "text" || Boolean(name.value.trim()) || Boolean(options.value.trim());
+    row.querySelector(".dropdown-options").hidden = !dropdown;
+    row.querySelector(".field-type-hint").textContent = typeHints[type.value] || "";
+    const remove = row.querySelector(".remove-collection-field");
+    if (remove) remove.setAttribute("aria-label", `Remove ${name.value.trim() || "unnamed field"}`);
+    name.required = active;
+    name.setCustomValidity(active && !name.value.trim() ? "Enter a name for this field." : "");
+    options.required = dropdown && active;
+    options.setCustomValidity(dropdown && active && !options.value.trim()
+      ? `Enter at least one option for ${name.value.trim() || "this field"}.` : "");
+  };
+  const prepareField = (row) => {
+    const id = `collection-field-${nextFieldId++}`;
+    row.querySelectorAll("label").forEach((label, index) => {
+      const control = label.querySelector("input, select, textarea");
+      control.id = `${id}-${index}`;
+      label.htmlFor = control.id;
+    });
+    const hint = row.querySelector(".field-type-hint");
+    hint.id = `${id}-type-hint`;
+    row.querySelector('[name="field_type"]').setAttribute("aria-describedby", hint.id);
+    const optionsHint = row.querySelector(".field-hint");
+    optionsHint.id = `${id}-options-hint`;
+    row.querySelector('[name="field_options"]').setAttribute("aria-describedby", optionsHint.id);
+    const remove = row.querySelector(".remove-collection-field");
+    if (remove) remove.addEventListener("click", () => {
+      const next = row.nextElementSibling || row.previousElementSibling;
+      row.remove();
+      (next ? next.querySelector('[name="field_name"]') : document.getElementById("add-collection-field")).focus();
+    });
+    updateField(row);
+  };
+  fieldList.querySelectorAll(".collection-field-row").forEach(prepareField);
+  ["input", "change"].forEach((eventName) => fieldList.addEventListener(eventName, (event) => {
+    const row = event.target.closest(".collection-field-row");
+    if (row) updateField(row);
+  }));
   document.getElementById("add-collection-field").addEventListener("click", () => {
     fieldList.append(fieldTemplate.content.cloneNode(true));
-    updateOptions(fieldList.lastElementChild);
+    prepareField(fieldList.lastElementChild);
     fieldList.lastElementChild.querySelector('[name="field_name"]').focus();
   });
 </script>
