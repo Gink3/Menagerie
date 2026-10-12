@@ -162,3 +162,33 @@ summary { cursor: pointer; font-weight: 600; }
   .image-management .item-image-row { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* Short sections and contextual controls keep editing approachable. */
+.editor-form { gap: 28px; max-width: 900px; }
+.form-section { border: 0; margin: 0; min-width: 0; padding: 0; }
+.form-section legend { color: var(--text); font-size: 16px; font-weight: 600; margin-bottom: 16px; padding: 0; }
+.form-section + .form-section, .form-disclosure + .form-section { border-top: 1px solid var(--line); padding-top: 24px; }
+.form-grid { align-items: start; display: grid; gap: 18px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.form-wide { grid-column: 1 / -1; }
+.form-grid .check-row { align-self: center; min-height: 42px; }
+.form-hint { margin: 0; }
+.form-disclosure { border-bottom: 1px solid var(--line); border-top: 1px solid var(--line); padding: 18px 0; }
+.form-disclosure summary { display: list-item; }
+.form-disclosure summary .meta { margin-left: 8px; }
+.form-disclosure[open] > summary { margin-bottom: 16px; }
+.form-footer { align-items: center; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px; padding-top: 20px; }
+.breadcrumb { color: var(--muted); display: inline-block; font-size: 13px; margin-bottom: 12px; }
+.breadcrumb:hover { color: var(--accent-dark); }
+.collection-field-list { gap: 20px; margin-bottom: 20px; }
+.collection-field-row + .collection-field-row { padding-top: 20px; }
+.collection-field-row .remove-collection-field { color: var(--muted); font-size: 12px; padding: 5px 10px; }
+.field-type-hint { font-size: 12px; }
+.settings-page { display: grid; gap: 24px; max-width: 900px; }
+.settings-page > .page-head { margin-bottom: 0; }
+.settings-page h2 { font-size: 18px; margin-bottom: 8px; }
+.settings-page form > button, .settings-page section > .button { justify-self: start; }
+.settings-page .panel > label { max-width: 520px; }
+.auth-panel { max-width: 420px; }
+@media (max-width: 600px) {
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .form-footer > button { flex: 1; }
+}

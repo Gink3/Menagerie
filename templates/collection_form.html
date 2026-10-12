@@ -20,10 +20,14 @@
 {% endmacro %}
 {% block content %}
 <div class="page-head">
+  <div><a class="breadcrumb" href="{{ url_for('collections_index') }}">My collections</a>
   <h1>{% if collection %}Edit{% else %}New{% endif %} collection</h1>
+  <p>Give your collection a home, then choose the details you want to track.</p></div>
 </div>
-<form method="post" class="panel stack">
+<form method="post" class="panel stack editor-form">
   {{ csrf_field()|safe }}
+  <fieldset class="form-section stack">
+  <legend>Collection details</legend>
   <label>Name<input name="name" value="{{ collection.name if collection else '' }}" required></label>
   <label>Description<textarea name="description" rows="3">{{ collection.description if collection else '' }}</textarea></label>
   {% if collection and g.user.role == 'admin' %}
@@ -35,7 +39,8 @@
       </select>
     </label>
   {% endif %}
-  <fieldset class="collection-fields">
+  </fieldset>
+  <fieldset class="collection-fields form-section">
     <legend>{% if collection %}Fields{% else %}Initial fields{% endif %}</legend>
     <p class="meta">Name each field and choose how its value is entered. UUID is included automatically.</p>
     <div id="collection-field-list" class="collection-field-list">
@@ -47,7 +52,10 @@
     </div>
     <button type="button" class="subtle" id="add-collection-field">Add field</button>
   </fieldset>
-  <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
+  <div class="form-footer">
+    <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
+    <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id) if collection else url_for('collections_index') }}">Cancel</a>
+  </div>
 </form>
 <template id="collection-field-template">{{ field_row() }}</template>
 <script>

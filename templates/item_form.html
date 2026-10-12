@@ -1,18 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-head">
+  <div><a class="breadcrumb" href="{{ url_for('collection_view', collection_id=collection.id) }}">{{ collection.name }}</a>
   <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
+  <p>Describe your item, add its details, and bring it to life with photographs.</p></div>
 </div>
-<form method="post" enctype="multipart/form-data" class="panel stack">
+<form method="post" enctype="multipart/form-data" class="panel stack editor-form">
   {{ csrf_field()|safe }}
+  <fieldset class="form-section stack">
+    <legend>Overview</legend>
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
-  <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
-  <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
+  <label>Tags<input name="tags" value="{{ tags }}" placeholder="e.g. painted, fantasy"></label>
+  <p class="meta form-hint">Separate tags with commas.</p>
+  </fieldset>
+  {% set editable_fields = namespace(count=0) %}
+  {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}{% set editable_fields.count = editable_fields.count + 1 %}{% endfor %}
+  {% if editable_fields.count %}
+  <fieldset class="form-section">
+    <legend>Collection details</legend>
+    <div class="form-grid">
   {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}
     {% set field_value = values.get(field.id, '') if values is defined else '' %}
     {% if field.field_type == "multiline" %}
-      <label>{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
+      <label class="form-wide">{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
     {% elif field.field_type == "dropdown" %}
       <label>{{ field.name }}<select name="field_{{ field.id }}">
         <option value="">Choose an option</option>
@@ -31,13 +42,30 @@
       {% endif %}
     {% endif %}
   {% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
+  <details class="form-disclosure">
+    <summary>Identification <span class="meta">UUID &amp; RFID</span></summary>
+    <p class="meta">A UUID is generated automatically. Add an RFID tag if you use a capture station.</p>
+    <div class="form-grid">
+  <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
+  <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
+    </div>
+  </details>
   {% if show_advanced_fields and item %}
     <details><summary>Advanced capture settings (recorded automatically)</summary><dl>
     {% for field in fields if field.capture_key %}<dt>{{ field.name }}</dt><dd>{{ values.get(field.id, '') or 'Unknown' }}</dd>{% endfor %}
     </dl></details>
   {% endif %}
-  <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
-  <label>Images<input name="images" type="file" accept="image/*" multiple></label>
-  <button type="submit">Save item</button>
+  <fieldset class="form-section stack">
+    <legend>Photographs</legend>
+    <p class="meta form-hint">Add one or more images. You can choose gallery images and adjust framing after saving.</p>
+    <label>Images<input name="images" type="file" accept="image/*" multiple></label>
+  </fieldset>
+  <div class="form-footer">
+    <button type="submit">Save item</button>
+    <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id) if item else url_for('collection_view', collection_id=collection.id) }}">Cancel</a>
+  </div>
 </form>
 {% endblock %}
