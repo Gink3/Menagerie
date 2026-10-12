@@ -44,7 +44,7 @@ class Sequence:
             raise ValueError("Wait for the motor to stop.")
         if not state.get("steps_per_rev"):
             raise ValueError(
-                "Calibrate pulses per turn in Capture Station, then enter that value in Mini Scan."
+                "Enter pulses per revolution in the Capture station panel and click Apply motor settings. For 60° magnets use interval pulses × 6."
             )
         self.draft.mutable()
         self.active = True

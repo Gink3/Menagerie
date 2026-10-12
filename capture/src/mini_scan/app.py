@@ -233,6 +233,9 @@ class App:
             "Pulses per revolution",
             self.settings.get("steps_per_rev", calibration.get("steps_per_rev", 0)),
         )
+        self.sector_pulses = field(device, "Pulses per 60° interval", "210")
+        button(row(device), "Use interval × 6", self.use_sector_pulses)
+        ttk.Label(device, text="210 pulses between magnets = 1260 per revolution. Click Apply motor settings after editing.", wraplength=700).pack(anchor="w")
         self.speed = field(
             device,
             "STEP pulses/second",
@@ -244,6 +247,12 @@ class App:
         ttk.Checkbutton(
             device, text="Reverse motor direction", variable=self.invert
         ).pack(anchor="w")
+        button(row(device), "Apply motor settings", self.apply_motor_settings)
+        self.jog_pulses = field(device, "Calibration jog pulses", "210")
+        jog_actions = row(device)
+        button(jog_actions, "Jog counterclockwise", lambda: self.jog_motor(-1))
+        button(jog_actions, "Jog clockwise", lambda: self.jog_motor(1))
+        ttk.Label(device, text="Jog between adjacent magnets to measure interval pulses. Six identical magnets make any magnet a home reference; they do not identify a unique zero.", wraplength=700).pack(anchor="w")
         camrow = row(device)
         ttk.Label(camrow, text="Camera", width=23).pack(side="left")
         self.camera_choice = ttk.Combobox(camrow, state="readonly")
@@ -453,6 +462,46 @@ class App:
                 next((n for n in self.cameras if n != "Simulator"), "Simulator"),
             )
             self.camera_choice.set(preferred)
+
+    def use_sector_pulses(self):
+        try:
+            pulses = int(self.sector_pulses.get())
+            if not 1 <= pulses <= 166666:
+                raise ValueError("Enter 1–166666 pulses per 60° interval.")
+            self.steps.set(str(pulses * 6))
+        except ValueError as error:
+            self.fail(error)
+
+    def motor_idle(self):
+        if not self.connected:
+            raise ValueError("Connect the Pico first.")
+        if self.config_pending is not None or self.state.get("busy") or (self.sequence and self.sequence.active):
+            raise ValueError("Wait for motor configuration or capture to finish, or press STOP.")
+
+    def apply_motor_settings(self):
+        try:
+            self.motor_idle()
+            steps, speed = int(self.steps.get()), int(self.speed.get())
+            if not 0 <= steps <= 1000000 or not 20 <= speed <= 1000:
+                raise ValueError("Use 0–1000000 pulses/revolution and 20–1000 pulses/second.")
+        except ValueError as error:
+            self.fail(error)
+            return
+        self.device_settings = dict(steps_per_rev=steps, speed=speed, invert=self.invert.get(), hall=True)
+        self.configured = False
+        self.config_pending = self.send("CONFIG", **self.device_settings)
+        self.device_status.set("Applying motor settings…")
+
+    def jog_motor(self, direction):
+        try:
+            self.motor_idle()
+            pulses = int(self.jog_pulses.get())
+            if not 1 <= pulses <= 100000:
+                raise ValueError("Enter 1–100000 jog pulses.")
+        except ValueError as error:
+            self.fail(error)
+            return
+        self.send("JOG", steps=direction * pulses)
 
     def connect_device(self):
         if self.connection:
@@ -676,6 +725,8 @@ class App:
                     self.configured = kind == "done"
                     self.config_pending = None
                     if self.configured:
+                        self.settings.update(self.device_settings)
+                        self.save_settings()
                         self.send("RFID_SCAN")
                     self.device_status.set(
                         "Pico ready · Hall homing enabled"

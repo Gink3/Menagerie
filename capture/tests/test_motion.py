@@ -50,6 +50,14 @@ class MotionTests(unittest.TestCase):
                 self.finish()
             self.assertEqual(self.motor.position, 200 if direction == 60 else 0)
 
+    def test_210_pulses_per_60_degree_interval(self):
+        self.command("CONFIG", steps_per_rev=1260, speed=210, hall=True)
+        self.command("ZERO")
+        for index in range(1, 7):
+            self.command("ROTATE", degrees=60)
+            self.finish()
+            self.assertEqual(self.motor.position, index * 210)
+
     def test_return_uses_nearest_equivalent_home(self):
         self.command("ZERO")
         self.command("JOG", steps=170)
