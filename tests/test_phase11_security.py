@@ -87,17 +87,32 @@ class Phase11SecurityTests(unittest.TestCase):
             with self.assertRaises(NotFound):
                 apply()
 
-    def test_random_gallery_layout_fills_each_row_before_the_next(self):
+    def test_random_gallery_layout_defaults_to_square_units_without_overlap(self):
         tiles = random_gallery_layout([{"id": index} for index in range(12)])
         occupied = set()
         for tile in tiles:
+            self.assertEqual(tile["gallery_w"], tile["gallery_h"])
+            self.assertLessEqual(tile["gallery_x"] + tile["gallery_w"], 6)
             for y in range(tile["gallery_y"], tile["gallery_y"] + tile["gallery_h"]):
                 for x in range(tile["gallery_x"], tile["gallery_x"] + tile["gallery_w"]):
                     self.assertNotIn((x, y), occupied)
                     occupied.add((x, y))
 
-        for y in range(max(y for _, y in occupied) + 1):
-            self.assertEqual({x for x, row in occupied if row == y}, set(range(6)))
+    def test_random_gallery_layout_preserves_configured_ratio(self):
+        for width, height in ((2, 1), (1, 2), (4, 3), (6, 6)):
+            tiles = random_gallery_layout(
+                [{"id": index} for index in range(20)],
+                ratio_width=width, ratio_height=height,
+            )
+            occupied = set()
+            for tile in tiles:
+                self.assertEqual(tile["gallery_w"] * height, tile["gallery_h"] * width)
+                self.assertLessEqual(tile["gallery_x"] + tile["gallery_w"], 6)
+                for y in range(tile["gallery_y"], tile["gallery_y"] + tile["gallery_h"]):
+                    for x in range(tile["gallery_x"], tile["gallery_x"] + tile["gallery_w"]):
+                        self.assertNotIn((x, y), occupied)
+                        occupied.add((x, y))
+
 
 
 if __name__ == "__main__":

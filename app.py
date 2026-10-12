@@ -1467,7 +1467,14 @@ def gallery_images(owner_id=None, mixed=False):
         # gallery layouts remain saved and editable. Shuffle after grouping the
         # image rows, so every item has an equal chance of appearing first.
         random.shuffle(gallery_items)
-        return random_gallery_layout(gallery_items)
+        settings = {row["key"]: row["value"] for row in get_db().execute(
+            "select key, value from settings where key in ('gallery_ratio_width', 'gallery_ratio_height')"
+        )}
+        return random_gallery_layout(
+            gallery_items,
+            ratio_width=int(settings.get("gallery_ratio_width", "1")),
+            ratio_height=int(settings.get("gallery_ratio_height", "1")),
+        )
     return normalize_gallery_layout(gallery_items)
 
 
@@ -1506,33 +1513,32 @@ def normalize_gallery_layout(items):
     return normalized
 
 
-def random_gallery_layout(items, columns=6):
-    """Give mixed-gallery items random sizes while fully packing each row."""
+def random_gallery_layout(items, columns=6, ratio_width=1, ratio_height=1):
+    """Randomize tile scale while preserving the configured ratio in grid units."""
+    from math import gcd
+
+    if not 1 <= ratio_width <= 6 or not 1 <= ratio_height <= 6:
+        raise ValueError("Gallery ratio must use whole numbers from 1 to 6.")
+    divisor = gcd(ratio_width, ratio_height)
+    unit_width, unit_height = ratio_width // divisor, ratio_height // divisor
+    max_scale = min(columns // unit_width, 6 // unit_height, 3)
+    if max_scale < 1 or min(unit_width, unit_height) < 1:
+        raise ValueError("Gallery ratio must fit within six grid units.")
     layout = []
-    x = y = 0
-    row_height = 1
-    for position, item in enumerate(items):
-        if x == 0:
-            # Keeping a row's height uniform means a new row never leaves holes
-            # beneath a shorter neighboring tile.
-            row_height = random.choice((1, 1, 2, 2, 3))
-
-        remaining_width = columns - x
-        is_last_item = position == len(items) - 1
-        width = remaining_width if is_last_item else min(
-            remaining_width, random.choice((1, 1, 2, 2, 3))
-        )
+    occupied = set()
+    for item in items:
+        scale = random.choice(range(1, max_scale + 1))
+        width, height = unit_width * scale, unit_height * scale
+        x = y = 0
+        while tile_overlaps(occupied, x, y, width, height):
+            x += 1
+            if x + width > columns:
+                x = 0
+                y += 1
+        occupy_gallery_slot(occupied, x, y, width, height)
         tile = row_to_dict(item)
-        tile["gallery_x"] = x
-        tile["gallery_y"] = y
-        tile["gallery_w"] = width
-        tile["gallery_h"] = row_height
+        tile.update(gallery_x=x, gallery_y=y, gallery_w=width, gallery_h=height)
         layout.append(tile)
-
-        x += width
-        if x == columns:
-            x = 0
-            y += row_height
     return layout
 
 
@@ -3606,10 +3612,19 @@ def delete_field(field_id):
 def admin_settings():
     db = get_db()
     if request.method == "POST":
-        for key in ("site_name", "default_view"):
+        ratios = {}
+        for key in ("gallery_ratio_width", "gallery_ratio_height"):
+            try:
+                value = int(request.form.get(key, "1"))
+            except ValueError:
+                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
+            if not 1 <= value <= 6:
+                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
+            ratios[key] = str(value)
+        for key in ("site_name", "default_view", *ratios):
             db.execute(
                 "insert into settings (key, value) values (?, ?) on conflict(key) do update set value = excluded.value",
-                (key, request.form.get(key, "").strip()),
+                (key, ratios[key] if key in ratios else request.form.get(key, "").strip()),
             )
         db.commit()
         flash("Settings saved.", "success")

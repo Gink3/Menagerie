@@ -12,6 +12,14 @@
   {{ csrf_field()|safe }}
   <label>Site name<input name="site_name" value="{{ settings.get('site_name', 'Menagerie') }}"></label>
   <label>Default view<select name="default_view"><option value="table" {% if settings.get('default_view') == 'table' %}selected{% endif %}>table</option><option value="gallery" {% if settings.get('default_view') == 'gallery' %}selected{% endif %}>gallery</option></select></label>
+  <fieldset class="collection-fields">
+    <legend>Random gallery aspect ratio</legend>
+    <p class="meta" id="gallery-ratio-hint">Width × height in gallery units (1–6 each). Defaults to 1 × 1. Random tiles keep this ratio while varying in size.</p>
+    <div class="collection-field-row">
+      <label>Width<input type="number" name="gallery_ratio_width" min="1" max="6" step="1" required aria-describedby="gallery-ratio-hint" value="{{ settings.get('gallery_ratio_width', '1') }}"></label>
+      <label>Height<input type="number" name="gallery_ratio_height" min="1" max="6" step="1" required aria-describedby="gallery-ratio-hint" value="{{ settings.get('gallery_ratio_height', '1') }}"></label>
+    </div>
+  </fieldset>
   <button type="submit">Save settings</button>
 </form>
 {% endblock %}
