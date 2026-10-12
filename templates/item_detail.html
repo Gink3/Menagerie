@@ -69,6 +69,10 @@
             <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
             <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
             <a href="{{ url_for('image_settings', image_id=image.id) }}">Frame image</a>
+            <div class="image-reorder-controls" role="group" aria-label="Reorder {{ image.original_name }}">
+              <button class="subtle" type="button" data-image-move="-1" {% if loop.first %}disabled{% endif %}>Move earlier</button>
+              <button class="subtle" type="button" data-image-move="1" {% if loop.last %}disabled{% endif %}>Move later</button>
+            </div>
             {% if show_advanced_fields and image.id in captures %}
               <details><summary>Advanced capture record</summary><pre>{{ captures[image.id]|tojson(indent=2) }}</pre></details>
             {% endif %}
@@ -124,7 +128,10 @@
 
     const renumberGalleryImages = () => {
       let position = 1;
-      document.querySelectorAll(".item-image-row").forEach((row) => {
+      const rows = [...document.querySelectorAll(".item-image-row")];
+      rows.forEach((row, index) => {
+        row.querySelector('[data-image-move="-1"]').disabled = index === 0;
+        row.querySelector('[data-image-move="1"]').disabled = index === rows.length - 1;
         const toggle = row.querySelector(".gallery-image-toggle");
         const orderInput = row.querySelector(".gallery-image-order");
         if (!toggle || !orderInput) {
@@ -159,6 +166,23 @@
       event.preventDefault();
       renumberGalleryImages();
       saveGalleryImages();
+    });
+
+    document.querySelectorAll("[data-image-move]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const row = button.closest(".item-image-row");
+        const rows = [...galleryImageForm.querySelectorAll(".item-image-row")];
+        const direction = Number(button.dataset.imageMove);
+        const target = rows[rows.indexOf(row) + direction];
+        if (!target) return;
+        if (direction < 0) target.before(row);
+        else target.after(row);
+        renumberGalleryImages();
+        queueGalleryImageSave();
+        // Keep keyboard focus on the moved row even at a disabled boundary.
+        if (button.disabled) row.focus();
+        else button.focus();
+      });
     });
 
     document.querySelectorAll(".gallery-image-toggle").forEach((toggle) => {
