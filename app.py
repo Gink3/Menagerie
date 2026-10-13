@@ -1031,6 +1031,8 @@ def init_db():
         "crop_x": "real not null default 50",
         "crop_y": "real not null default 50",
         "crop_zoom": "real not null default 1",
+        "gallery_ratio_width": "integer not null default 1",
+        "gallery_ratio_height": "integer not null default 1",
     }
     for column, definition in image_defaults.items():
         if column not in image_columns:
@@ -1445,7 +1447,10 @@ def gallery_images(owner_id=None, mixed=False):
     item_lookup = {}
     for row in rows:
         item_id = row["item_id"]
-        if item_id not in item_lookup:
+        # Random exhibitions frame each photograph independently; personal
+        # galleries retain the saved item tiles and their slideshows.
+        tile_key = row["id"] if mixed else item_id
+        if tile_key not in item_lookup:
             item = {
                 "id": item_id,
                 "name": row["item_name"],
@@ -1457,24 +1462,16 @@ def gallery_images(owner_id=None, mixed=False):
                 "gallery_y": row["item_gallery_y"],
                 "gallery_w": row["item_gallery_w"],
                 "gallery_h": row["item_gallery_h"],
+                "gallery_ratio_width": row["gallery_ratio_width"],
+                "gallery_ratio_height": row["gallery_ratio_height"],
                 "images": [],
             }
-            item_lookup[item_id] = item
+            item_lookup[tile_key] = item
             gallery_items.append(item)
-        item_lookup[item_id]["images"].append(row)
+        item_lookup[tile_key]["images"].append(row)
     if mixed:
-        # The public gallery is a fresh mixed exhibition on every visit; personal
-        # gallery layouts remain saved and editable. Shuffle after grouping the
-        # image rows, so every item has an equal chance of appearing first.
         random.shuffle(gallery_items)
-        settings = {row["key"]: row["value"] for row in get_db().execute(
-            "select key, value from settings where key in ('gallery_ratio_width', 'gallery_ratio_height')"
-        )}
-        return random_gallery_layout(
-            gallery_items,
-            ratio_width=int(settings.get("gallery_ratio_width", "1")),
-            ratio_height=int(settings.get("gallery_ratio_height", "1")),
-        )
+        return random_gallery_layout(gallery_items)
     return normalize_gallery_layout(gallery_items)
 
 
@@ -1513,20 +1510,23 @@ def normalize_gallery_layout(items):
     return normalized
 
 
-def random_gallery_layout(items, columns=6, ratio_width=1, ratio_height=1):
-    """Randomize tile scale while preserving the configured ratio in grid units."""
+def random_gallery_layout(items, columns=6):
+    """Randomize scale while preserving each photograph's ratio in grid units."""
     from math import gcd
 
-    if not 1 <= ratio_width <= 6 or not 1 <= ratio_height <= 6:
-        raise ValueError("Gallery ratio must use whole numbers from 1 to 6.")
-    divisor = gcd(ratio_width, ratio_height)
-    unit_width, unit_height = ratio_width // divisor, ratio_height // divisor
-    max_scale = min(columns // unit_width, 6 // unit_height, 3)
-    if max_scale < 1 or min(unit_width, unit_height) < 1:
-        raise ValueError("Gallery ratio must fit within six grid units.")
     layout = []
     occupied = set()
     for item in items:
+        tile = row_to_dict(item)
+        ratio_width = tile.get("gallery_ratio_width", 1)
+        ratio_height = tile.get("gallery_ratio_height", 1)
+        if not 1 <= ratio_width <= 6 or not 1 <= ratio_height <= 6:
+            raise ValueError("Gallery ratio must use whole numbers from 1 to 6.")
+        divisor = gcd(ratio_width, ratio_height)
+        unit_width, unit_height = ratio_width // divisor, ratio_height // divisor
+        max_scale = min(columns // unit_width, 6 // unit_height, 3)
+        if max_scale < 1:
+            raise ValueError("Gallery ratio must fit within six grid units.")
         scale = random.choice(range(1, max_scale + 1))
         width, height = unit_width * scale, unit_height * scale
         x = y = 0
@@ -1536,7 +1536,6 @@ def random_gallery_layout(items, columns=6, ratio_width=1, ratio_height=1):
                 x = 0
                 y += 1
         occupy_gallery_slot(occupied, x, y, width, height)
-        tile = row_to_dict(item)
         tile.update(gallery_x=x, gallery_y=y, gallery_w=width, gallery_h=height)
         layout.append(tile)
     return layout
@@ -1973,9 +1972,19 @@ def image_settings(image_id):
         crop_x = max(0, min(100, float(request.form.get("crop_x", image["crop_x"]))))
         crop_y = max(0, min(100, float(request.form.get("crop_y", image["crop_y"]))))
         crop_zoom = max(1, min(3, float(request.form.get("crop_zoom", image["crop_zoom"]))))
+        ratios = []
+        for key in ("gallery_ratio_width", "gallery_ratio_height"):
+            try:
+                value = int(request.form.get(key, image[key]))
+            except ValueError:
+                abort(400, description="Image aspect ratio must use whole numbers from 1 to 6.")
+            if not 1 <= value <= 6:
+                abort(400, description="Image aspect ratio must use whole numbers from 1 to 6.")
+            ratios.append(value)
         get_db().execute(
-            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ? where id = ?",
-            (crop_x, crop_y, crop_zoom, image["id"]),
+            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ?, "
+            "gallery_ratio_width = ?, gallery_ratio_height = ? where id = ?",
+            (crop_x, crop_y, crop_zoom, *ratios, image["id"]),
         )
         get_db().commit()
         if is_background_request():
@@ -3617,19 +3626,10 @@ def delete_field(field_id):
 def admin_settings():
     db = get_db()
     if request.method == "POST":
-        ratios = {}
-        for key in ("gallery_ratio_width", "gallery_ratio_height"):
-            try:
-                value = int(request.form.get(key, "1"))
-            except ValueError:
-                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
-            if not 1 <= value <= 6:
-                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
-            ratios[key] = str(value)
-        for key in ("site_name", "default_view", *ratios):
+        for key in ("site_name", "default_view"):
             db.execute(
                 "insert into settings (key, value) values (?, ?) on conflict(key) do update set value = excluded.value",
-                (key, ratios[key] if key in ratios else request.form.get(key, "").strip()),
+                (key, request.form.get(key, "").strip()),
             )
         db.commit()
         flash("Settings saved.", "success")

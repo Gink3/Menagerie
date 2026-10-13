@@ -9,6 +9,13 @@
     <label for="crop-zoom">Zoom</label>
     <input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}">
     <output id="crop-zoom-value" for="crop-zoom">{{ '%.2f'|format(image.crop_zoom) }}×</output>
+    <fieldset class="image-ratio-controls">
+      <legend>Random gallery aspect ratio</legend>
+      <label>Width<input id="image-ratio-width" name="gallery_ratio_width" type="number" min="1" max="6" step="1" required value="{{ image.gallery_ratio_width }}" aria-describedby="image-ratio-hint"></label>
+      <span aria-hidden="true">×</span>
+      <label>Height<input id="image-ratio-height" name="gallery_ratio_height" type="number" min="1" max="6" step="1" required value="{{ image.gallery_ratio_height }}" aria-describedby="image-ratio-hint"></label>
+    </fieldset>
+    <p class="meta image-ratio-hint" id="image-ratio-hint">Width × height in gallery units (1–6). Applies to this image in the random gallery. Default: 1 × 1.</p>
     <button class="subtle" id="reset-crop" type="button">Reset framing</button>
     <span class="meta" id="crop-status" aria-live="polite">Saved automatically</span>
     <button name="return_to_gallery" type="submit" value="1">Save</button>
@@ -24,7 +31,7 @@
   <p>Drag to pan · Scroll to zoom · Changes save automatically</p>
 </header>
 <section class="framing-canvas">
-  <div class="crop-preview" id="crop-preview" aria-label="Gallery crop preview">
+  <div class="crop-preview" id="crop-preview" style="--crop-ratio: {{ image.gallery_ratio_width / image.gallery_ratio_height }}" aria-label="Gallery crop preview">
     <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
 </section>
@@ -35,12 +42,17 @@
   const cropX = document.querySelector("#crop-x");
   const cropY = document.querySelector("#crop-y");
   const cropZoom = document.querySelector("#crop-zoom");
+  const ratioWidth = document.querySelector("#image-ratio-width");
+  const ratioHeight = document.querySelector("#image-ratio-height");
   const cropStatus = document.querySelector("#crop-status");
   const cropZoomValue = document.querySelector("#crop-zoom-value");
   let dragStart = null;
   let saveTimer = null;
 
   const updateCropPreview = () => {
+    if (ratioWidth.validity.valid && ratioHeight.validity.valid) {
+      cropBox.style.setProperty("--crop-ratio", Number(ratioWidth.value) / Number(ratioHeight.value));
+    }
     preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
     preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
     preview.style.transform = `scale(${cropZoom.value})`;
@@ -51,13 +63,21 @@
   const clampZoom = (value) => Math.max(1, Math.min(3, value));
 
   const saveCrop = async () => {
+    if (!cropForm.checkValidity()) {
+      cropStatus.textContent = "Enter width and height as whole numbers from 1 to 6.";
+      return;
+    }
     cropStatus.textContent = "Saving...";
-    const response = await fetch(cropForm.action || window.location.href, {
-      method: "POST",
-      headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
-      body: new FormData(cropForm),
-    });
-    cropStatus.textContent = response.ok ? "Saved automatically" : "Could not save";
+    try {
+      const response = await fetch(cropForm.action || window.location.href, {
+        method: "POST",
+        headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
+        body: new FormData(cropForm),
+      });
+      cropStatus.textContent = response.ok ? "Saved automatically" : "Could not save";
+    } catch {
+      cropStatus.textContent = "Could not save. Try again.";
+    }
   };
 
   const queueSaveCrop = () => {
@@ -109,6 +129,11 @@
     updateCropPreview();
     queueSaveCrop();
   });
+  [ratioWidth, ratioHeight].forEach((input) => input.addEventListener("input", () => {
+    updateCropPreview();
+    queueSaveCrop();
+  }));
+  cropForm.addEventListener("submit", () => clearTimeout(saveTimer));
   document.querySelector("#reset-crop").addEventListener("click", () => {
     cropX.value = 50;
     cropY.value = 50;

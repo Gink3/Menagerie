@@ -25,6 +25,8 @@ The collection view shows a wide, filterable table for a single collection. Cust
 
 The gallery view displays selected item images as visual tiles. Each tile highlights the item name and owner, using the saved crop and gallery layout so collectors can present selected items as a browsable showcase.
 
+Each image has its own random-gallery aspect ratio, defaulting to **1 × 1**. Open the item, expand **Manage images**, and choose **Frame image** to set **Width** and **Height** (whole numbers from 1 to 6, in gallery units). The framing preview updates and saves automatically. The public random gallery displays each selected photograph in its own tile, varying its size while preserving its ratio. Personal galleries retain their saved item layouts and slideshows. Restart Menagerie after updating to add the per-image settings to existing databases; existing photos receive 1 × 1 without changing their saved pan or zoom.
+
 ## Run Locally
 
 ```powershell

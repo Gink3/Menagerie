@@ -101,8 +101,8 @@ class Phase11SecurityTests(unittest.TestCase):
     def test_random_gallery_layout_preserves_configured_ratio(self):
         for width, height in ((2, 1), (1, 2), (4, 3), (6, 6)):
             tiles = random_gallery_layout(
-                [{"id": index} for index in range(20)],
-                ratio_width=width, ratio_height=height,
+                [{"id": index, "gallery_ratio_width": width, "gallery_ratio_height": height}
+                 for index in range(20)],
             )
             occupied = set()
             for tile in tiles:
