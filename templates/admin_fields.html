@@ -22,7 +22,7 @@
         <option value="{{ value }}">{{ label }}</option>
       {% endfor %}
     </select>
-    <label>Dropdown options (one per line)<textarea name="field_options" rows="3"></textarea></label>
+    <label data-dropdown-options hidden>Options <span class="meta">One per line</span><textarea name="field_options" rows="3"></textarea></label>
     <button type="submit">Add field</button>
   </form>
   <div class="table-wrap">
@@ -39,7 +39,7 @@
                   <option value="{{ value }}" {% if field.field_type == value %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
-              <label>Dropdown options (one per line)<textarea name="field_options" rows="3">{{ (field|dropdown_options)|join('\n') }}</textarea></label>
+              <label data-dropdown-options {% if field.field_type != "dropdown" %}hidden{% endif %}>Options <span class="meta">One per line</span><textarea name="field_options" rows="3">{{ (field|dropdown_options)|join('\n') }}</textarea></label>
               <input name="position" type="number" min="0" value="{{ field.position }}">
               <button type="submit">Save</button>
             </form>
@@ -57,4 +57,5 @@
 {% else %}
   <div class="empty">Create a collection first.</div>
 {% endif %}
+<script src="{{ url_for('static', filename='field-options.js') }}" defer></script>
 {% endblock %}
