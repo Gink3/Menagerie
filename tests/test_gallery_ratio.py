@@ -27,13 +27,13 @@ class GalleryRatioTests(DatabaseTest):
         self.assertNotIn(b'name="gallery_ratio_width"', self.client.get('/admin/settings').data)
         with host.app.app_context():
             tiles = host.gallery_images(mixed=True)
-            self.assertEqual(len(tiles), 2)
+            self.assertEqual(len(tiles), 1)
             self.assertTrue(all(tile['gallery_w'] == tile['gallery_h'] for tile in tiles))
         self.assertEqual(self.save_ratio(gallery_ratio_width='3', gallery_ratio_height='2').status_code, 200)
         self.assertEqual(self.save_ratio(2, gallery_ratio_width='1', gallery_ratio_height='2').status_code, 200)
         with host.app.app_context():
             tiles = host.gallery_images(mixed=True)
-            self.assertEqual(len(tiles), 2)
+            self.assertEqual(len(tiles), 1)
             for tile in tiles:
                 self.assertEqual(len(tile['images']), 1)
                 image = tile['images'][0]
@@ -42,6 +42,28 @@ class GalleryRatioTests(DatabaseTest):
             personal = host.gallery_images(owner_id=1)
             self.assertEqual(len(personal), 1)
             self.assertEqual(len(personal[0]['images']), 2)
+
+    def test_random_gallery_uses_first_enabled_image_in_gallery_order(self):
+        with host.app.app_context():
+            db = host.get_db()
+            for index in range(4):
+                db.execute("insert into item_images(item_id,filename,original_name) values(1,?,?)", (f'view{index}.png', f'View {index}'))
+            db.execute('update item_images set gallery_position=5 where id=1')
+            db.execute('update item_images set gallery_position=0 where id=2')
+            db.execute("insert into items(collection_id,name) values(1,'Second item')")
+            db.execute("insert into item_images(item_id,filename,original_name) values(2,'second.png','Second')")
+            db.commit()
+            tiles = host.gallery_images(mixed=True)
+            self.assertEqual(len(tiles), 2)
+            tile = next(tile for tile in tiles if tile['id'] == 1)
+            self.assertEqual([image['id'] for image in tile['images']], [2])
+            db.execute('update item_images set gallery_enabled=0 where id=2')
+            db.commit()
+            tile = next(tile for tile in host.gallery_images(mixed=True) if tile['id'] == 1)
+            self.assertNotEqual(tile['images'][0]['id'], 2)
+            db.execute('update item_images set gallery_enabled=0 where item_id=1')
+            db.commit()
+            self.assertEqual([tile['id'] for tile in host.gallery_images(mixed=True)], [2])
 
     def test_invalid_ratio_does_not_change_ratio_or_crop(self):
         for key in ('gallery_ratio_width', 'gallery_ratio_height'):

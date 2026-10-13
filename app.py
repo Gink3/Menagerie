@@ -1447,9 +1447,11 @@ def gallery_images(owner_id=None, mixed=False):
     item_lookup = {}
     for row in rows:
         item_id = row["item_id"]
-        # Random exhibitions frame each photograph independently; personal
-        # galleries retain the saved item tiles and their slideshows.
-        tile_key = row["id"] if mixed else item_id
+        # One tile per item. The random gallery uses its first enabled image;
+        # personal galleries keep the remaining images as slideshow frames.
+        tile_key = item_id
+        if mixed and tile_key in item_lookup:
+            continue
         if tile_key not in item_lookup:
             item = {
                 "id": item_id,

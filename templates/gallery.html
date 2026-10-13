@@ -7,7 +7,7 @@
     <h1>{% if owner %}{{ owner.username }}'s gallery{% else %}Gallery{% endif %}</h1>
     <p>{% if owner %}A tile layout of selected collection images.{% else %}Selected gallery images from across Menagerie.{% endif %}</p>
   </div>
-  <div class="actions"><span class="meta">{{ images|length }} {% if owner %}{{ 'item' if images|length == 1 else 'items' }}{% else %}{{ 'image' if images|length == 1 else 'images' }}{% endif %}</span>
+  <div class="actions"><span class="meta">{{ images|length }} {{ 'item' if images|length == 1 else 'items' }}</span>
   {% if editable %}
     <button class="button subtle" id="save-gallery-layout" type="button">Save layout</button>
   {% endif %}
