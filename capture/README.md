@@ -243,3 +243,24 @@ in `hardware/capture-station/`. See [setup](../docs/capture-setup.md) and
 installing `capture/`: setuptools includes the portable Pico modules as
 `menagerie_pico`, so simulation and physical hardware use the same state machines.
 The web app has its own dependencies in the root `requirements.txt`.
+
+### Manual plain-background crop
+
+In Mini Scan, select a photo and open **Edit photo → Auto crop · plain background**.
+The detector suggests a rectangle around the foreground; it does not edit the file
+until you choose **Apply**. Inspect the base, weapons, and other thin details before
+applying. Drag a replacement rectangle or use **Reset crop** to select the full photo.
+
+**Tolerance** (5–80, default 30) controls how different a pixel must be from the
+estimated border color to count as foreground. Increase it to ignore more backdrop
+variation; decrease it to retain details close to the backdrop color. **Padding %**
+(0–50, default 10) adds a margin on each side based on the subject's longer dimension.
+A mostly uniform, unobstructed border works best. Shadows may be included, and
+similarly colored details may be missed. Photos with no detectable subject or an
+inconsistent border retain their existing crop and display an explanation.
+
+Detection uses the unadjusted photo currently open in the editor, with a working
+copy limited to 1600 pixels on its longer side. The suggestion maps back to original
+pixel coordinates. Originals and acquisition focus measurements remain preserved
+by the existing editing workflow. This is a manual action only; the reusable
+`mini_scan.editing.plain_background_crop` helper is available for future automation.
