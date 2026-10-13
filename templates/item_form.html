@@ -83,7 +83,7 @@
     <p class="meta form-hint">Add one or more images. You can choose gallery images and adjust framing after saving.</p>
     <label>Images<input name="images" type="file" accept="image/*" multiple></label>
   </fieldset>
-  <div class="form-footer">
+  <div class="form-footer editor-save-bar" aria-label="Item actions">
     <button type="submit">Save item</button>
     <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id) if item else url_for('collection_view', collection_id=collection.id) }}">Cancel</a>
   </div>
