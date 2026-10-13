@@ -1993,6 +1993,10 @@ def image_settings(image_id):
         if request.form.get("return_to_gallery"):
             return redirect(url_for("my_gallery"))
         return redirect(url_for("item_detail", item_id=image["item_id"]))
+    if is_background_request():
+        return jsonify({key: image[key] for key in (
+            "crop_x", "crop_y", "crop_zoom", "gallery_ratio_width", "gallery_ratio_height"
+        )})
     return render_template("image_crop.html", image=image)
 
 
@@ -2036,6 +2040,8 @@ def delete_selected_item_image(item_id):
         (UPLOAD_DIR / image["filename"]).unlink()
     except FileNotFoundError:
         pass
+    if is_background_request():
+        return jsonify({"ok": True})
     flash("Image deleted.", "success")
     return redirect(url_for("item_detail", item_id=item_id))
 
@@ -2385,6 +2391,10 @@ def edit_item(item_id):
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))
     }
+    images = db.execute(
+        "select * from item_images where item_id = ? "
+        "order by gallery_enabled desc, gallery_position, position, id", (item_id,)
+    ).fetchall()
     return render_template(
         "item_form.html",
         collection=collection,
@@ -2393,6 +2403,8 @@ def edit_item(item_id):
         item=item,
         values=values,
         tags=", ".join(get_item_tags(item_id)),
+        images=images,
+        captures={image["id"]: json.loads(image["capture_metadata"]) for image in images if image["capture_metadata"]},
     )
 
 
