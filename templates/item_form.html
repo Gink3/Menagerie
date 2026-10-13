@@ -78,10 +78,12 @@
     {% for field in fields if field.capture_key %}<dt>{{ field.name }}</dt><dd>{{ values.get(field.id, '') or 'Unknown' }}</dd>{% endfor %}
     </dl></details>
   {% endif %}
-  <fieldset class="form-section stack">
+  <fieldset class="form-section stack" data-image-uploads>
     <legend>{% if item and images %}Add photographs{% else %}Photographs{% endif %}</legend>
     <p class="meta form-hint">Add one or more images. You can choose gallery images and adjust framing after saving.</p>
-    <label>Images<input name="images" type="file" accept="image/*" multiple></label>
+    <label>Add images<input name="images" type="file" accept="image/*" multiple></label>
+    <p class="meta" data-upload-status role="status" hidden></p>
+    <div class="pending-images" data-upload-previews aria-label="Photographs waiting to upload" hidden></div>
   </fieldset>
   <div class="form-footer editor-save-bar" aria-label="Item actions">
     <button type="submit">Save item</button>
@@ -89,4 +91,5 @@
   </div>
 </form>
 <script src="{{ url_for('static', filename='tags.js') }}" defer></script>
+<script src="{{ url_for('static', filename='uploads.js') }}" defer></script>
 {% endblock %}

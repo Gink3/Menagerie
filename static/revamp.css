@@ -315,3 +315,9 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 /* Keep one set of save controls reachable while editing long forms. */
 .editor-save-bar { background: var(--panel); bottom: 0; box-shadow: 0 -8px 16px -16px var(--text); margin: 0 -24px -24px; padding: 16px 24px; position: sticky; z-index: 8; }
 @media (max-width: 600px) { .editor-save-bar { padding-bottom: max(16px, env(safe-area-inset-bottom)); } }
+.pending-images { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.pending-images figure { border: 1px solid var(--line); border-radius: 8px; margin: 0; overflow: hidden; }
+.pending-images img { aspect-ratio: 1; display: block; object-fit: contain; width: 100%; background: var(--placeholder); }
+.pending-images figcaption { display: grid; gap: 8px; padding: 10px; }
+.pending-images figcaption span { font-size: 12px; overflow-wrap: anywhere; }
+.pending-images button { font-size: 12px; }
