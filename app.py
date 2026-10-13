@@ -1716,6 +1716,17 @@ def replace_item_tags(item_id, tags):
         db.execute("insert into item_tags (item_id, tag_id) values (?, ?)", (item_id, tag_id))
 
 
+def get_known_tags(owner_id):
+    """Suggest tags used in this collector's collections without exposing others."""
+    return [row["name"] for row in get_db().execute(
+        """select distinct tags.name from tags
+        join item_tags on item_tags.tag_id = tags.id
+        join items on items.id = item_tags.item_id
+        join collections on collections.id = items.collection_id
+        where collections.owner_id = ? order by tags.name""", (owner_id,)
+    )]
+
+
 def get_item_tags(item_id):
     return [
         row["name"]
@@ -2315,6 +2326,7 @@ def new_item(collection):
         field_suggestions=get_field_suggestions(collection_id),
         item=None,
         tags="",
+        known_tags=get_known_tags(collection["owner_id"]),
     )
 
 
@@ -2403,6 +2415,7 @@ def edit_item(item_id):
         item=item,
         values=values,
         tags=", ".join(get_item_tags(item_id)),
+        known_tags=get_known_tags(collection["owner_id"]),
         images=images,
         captures={image["id"]: json.loads(image["capture_metadata"]) for image in images if image["capture_metadata"]},
     )

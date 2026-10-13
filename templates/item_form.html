@@ -19,8 +19,20 @@
     <legend>Overview</legend>
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
-  <label>Tags<input name="tags" value="{{ tags }}" placeholder="e.g. painted, fantasy"></label>
-  <p class="meta form-hint">Separate tags with commas.</p>
+  <div class="tag-editor" data-known-tags="{{ known_tags|tojson|forceescape }}">
+    <label id="tag-label" for="item-tags">Tags</label>
+    <input id="item-tags" name="tags" value="{{ tags }}" placeholder="e.g. painted, fantasy">
+    <div class="tag-enhanced" hidden>
+      <div class="tag-input-box">
+        <div class="tag-chip-list" role="list" aria-label="Selected tags"></div>
+        <input id="tag-entry" type="text" role="combobox" aria-labelledby="tag-label" aria-autocomplete="list" aria-controls="tag-suggestions" aria-expanded="false" aria-describedby="tag-help" autocomplete="off" placeholder="Add a tag…">
+      </div>
+      <ul id="tag-suggestions" class="tag-suggestions" role="listbox" aria-label="Known tags" hidden></ul>
+      <span class="sr-only" id="tag-status" aria-live="polite"></span>
+    </div>
+    <p class="meta form-hint" id="tag-help">Type to find a tag. Press Enter or comma to add; use × to remove.</p>
+    <noscript><p class="meta">Separate tags with commas.</p></noscript>
+  </div>
   </fieldset>
   {% set editable_fields = namespace(count=0) %}
   {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}{% set editable_fields.count = editable_fields.count + 1 %}{% endfor %}
@@ -76,4 +88,5 @@
     <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id) if item else url_for('collection_view', collection_id=collection.id) }}">Cancel</a>
   </div>
 </form>
+<script src="{{ url_for('static', filename='tags.js') }}" defer></script>
 {% endblock %}
