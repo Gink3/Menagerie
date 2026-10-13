@@ -9,6 +9,7 @@
   </div>
   <div class="actions"><span class="meta">{{ images|length }} {{ 'item' if images|length == 1 else 'items' }}</span>
   {% if editable %}
+    <span class="meta" id="gallery-layout-status" role="status">Layout saved</span>
     <button class="button subtle" id="save-gallery-layout" type="button">Save layout</button>
   {% endif %}
   </div>
@@ -73,6 +74,16 @@
     const saveButton = document.querySelector("#save-gallery-layout");
     let draggedTile = null;
     let resizeState = null;
+    let layoutRevision = 0;
+    let savedRevision = 0;
+    const layoutStatus = document.querySelector("#gallery-layout-status");
+    const markLayoutChanged = () => {
+      layoutRevision++;
+      window.MenagerieFeedback.set(layoutStatus, "pending", "Unsaved layout changes");
+    };
+    window.addEventListener("beforeunload", (event) => {
+      if (layoutRevision !== savedRevision) { event.preventDefault(); event.returnValue = ""; }
+    });
 
     const syncTileStyle = (tile) => {
       tile.style.setProperty("--tile-x", Number(tile.dataset.x) + 1);
@@ -108,6 +119,7 @@
       target.dataset.y = dragged.y;
       syncTileStyle(draggedTile);
       syncTileStyle(target);
+      markLayoutChanged();
     });
 
     gallery?.addEventListener("pointerdown", (event) => {
@@ -153,6 +165,7 @@
       resizeState.tile.dataset.w = w;
       resizeState.tile.dataset.h = h;
       syncTileStyle(resizeState.tile);
+      markLayoutChanged();
     });
 
     gallery?.addEventListener("pointerup", () => { resizeState = null; });
@@ -166,13 +179,23 @@
         w: Number(tile.dataset.w),
         h: Number(tile.dataset.h),
       }));
-      const response = await fetch("{{ url_for('save_gallery_layout') }}", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}" },
-        body: JSON.stringify(updates),
-      });
-      saveButton.textContent = response.ok ? "Saved" : "Could not save";
-      setTimeout(() => { saveButton.textContent = "Save layout"; }, 1400);
+      const revision = layoutRevision;
+      saveButton.disabled = true;
+      window.MenagerieFeedback.set(layoutStatus, "saving", "Saving…");
+      try {
+        await window.MenagerieFeedback.request("{{ url_for('save_gallery_layout') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}", "X-Requested-With": "fetch" },
+          body: JSON.stringify(updates)
+        });
+        savedRevision = revision;
+        window.MenagerieFeedback.set(layoutStatus, savedRevision === layoutRevision ? "saved" : "pending",
+          savedRevision === layoutRevision ? "Layout saved" : "Unsaved layout changes");
+        saveButton.textContent = "Save layout";
+      } catch (error) {
+        window.MenagerieFeedback.set(layoutStatus, "error", error.message);
+        saveButton.textContent = "Retry save";
+      } finally { saveButton.disabled = false; }
     });
   </script>
 {% endif %}

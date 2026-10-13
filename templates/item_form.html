@@ -12,7 +12,7 @@
   {% include "_item_images.html" %}
 </section>
 {% endif %}
-<form method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form>
+<form method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form data-background-save>
   {{ csrf_field()|safe }}
   <input type="hidden" name="return_to" value="{{ return_to }}">
   <fieldset class="form-section stack">

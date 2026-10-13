@@ -336,3 +336,10 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 #selected-image-status { overflow-wrap: anywhere; }
 .item-image-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .gallery-cover-badge { background: var(--tag-bg); border-radius: 5px; color: var(--tag-text); font-size: 11px; justify-self: start; padding: 3px 8px; }
+/* Saving, validation and retry feedback share the existing palette. */
+.save-feedback { align-items: center; display: flex; flex-wrap: wrap; gap: 10px; }
+.save-feedback .meta { margin: 0; }
+.save-feedback button { font-size: 12px; padding: 5px 10px; }
+[data-state="error"], .field-error { color: var(--danger, var(--accent-dark)); }
+.field-error { display: block; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; }
+[aria-invalid="true"] { border-color: var(--danger, var(--accent)); }

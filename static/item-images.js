@@ -13,7 +13,6 @@
   const rows = () => [...form.querySelectorAll(".item-image-row")];
   let selected = null;
   let dragged = null;
-  let timer;
   const openedFrames = new Map();
   const select = (row) => {
     selected = row;
@@ -41,16 +40,11 @@
       : "No photographs selected for galleries.";
     select(selected);
   };
-  const save = async () => {
-    status.textContent = "Saving photo settings…";
-    try {
-      const response = await fetch(form.action, { method: "POST", headers: { "X-Requested-With": "fetch" }, body: new FormData(form) });
-      if (!response.ok) throw new Error();
-      status.textContent = "Photo settings saved";
-    } catch { status.textContent = "Could not save photo settings. Change a selection to retry."; }
-  };
-  const queueSave = () => { clearTimeout(timer); timer = setTimeout(save, 200); };
-  form.addEventListener("submit", (event) => { event.preventDefault(); renumber(); save(); });
+  const saving = window.MenagerieFeedback.autosave({
+    form, status, retry: manager.querySelector("#retry-photo-settings"), savedMessage: "Photo settings saved"
+  });
+  const queueSave = saving.queue;
+  form.addEventListener("submit", (event) => { event.preventDefault(); renumber(); saving.queue(); saving.flush(); });
   moves.forEach((button) => button.addEventListener("click", () => {
     const target = rows()[rows().indexOf(selected) + Number(button.dataset.imageMove)];
     if (!selected || !target) return;
@@ -87,14 +81,14 @@
     const data = new FormData(deleteForm);
     deleteButton.disabled = true;
     try {
-      const response = await fetch(deleteForm.action, { method: "POST", headers: { "X-Requested-With": "fetch" }, body: data });
-      if (!response.ok) throw new Error();
+      if (!await saving.flush()) throw new Error("Save photo settings before deleting. Use Retry above.");
+      await window.MenagerieFeedback.request(deleteForm.action, { method: "POST", headers: { "X-Requested-With": "fetch" }, body: data });
       row.remove();
       select(selected === row ? rows()[0] || null : selected);
       renumber();
       selectedStatus.textContent = "Image deleted.";
       form.focus();
-    } catch { selectedStatus.textContent = "Could not delete image. Try again."; deleteButton.disabled = !selected; }
+    } catch { window.MenagerieFeedback.set(selectedStatus, "error", "Could not delete image. Retry using Delete selected image."); deleteButton.disabled = !selected; }
   });
   frameLink.addEventListener("click", () => { if (selected) openedFrames.set(selected.dataset.imageId, selected.dataset.frameUrl); });
   window.addEventListener("focus", async () => {

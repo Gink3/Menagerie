@@ -2030,7 +2030,7 @@ def image_settings(image_id):
         )
         get_db().commit()
         if is_background_request():
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "next": url_for("my_gallery")})
         flash("Image settings saved.", "success")
         if request.form.get("return_to_gallery"):
             return redirect(url_for("my_gallery"))
@@ -2335,6 +2335,10 @@ def new_item(collection):
     collection_id = collection["id"]
     fields = get_fields(collection_id)
     if request.method == "POST":
+        if not request.form.get("name", "").strip():
+            if is_background_request():
+                return jsonify({"ok": False, "error": "Enter an item name."}), 400
+            abort(400, description="Enter an item name.")
         db = get_db()
         cursor = db.execute(
             "insert into items (collection_id, name, description, item_uuid, rfid_uid) values (?, ?, ?, ?, ?)",
@@ -2349,7 +2353,11 @@ def new_item(collection):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"])))
+        next_url = url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"]))
+        flash("Item saved.", "success")
+        if is_background_request():
+            return jsonify({"ok": True, "next": next_url})
+        return redirect(next_url)
     return render_template(
         "item_form.html",
         collection=collection,
@@ -2414,6 +2422,10 @@ def edit_item(item_id):
         abort(403)
     fields = get_fields(item["collection_id"])
     if request.method == "POST":
+        if not request.form.get("name", "").strip():
+            if is_background_request():
+                return jsonify({"ok": False, "error": "Enter an item name."}), 400
+            abort(400, description="Enter an item name.")
         db.execute(
             "update items set name = ?, description = ?, item_uuid = ?, rfid_uid = ?, updated_at = current_timestamp where id = ?",
             (request.form["name"].strip(), request.form.get("description", "").strip(), *scan_api.identity(request.form), item_id),
@@ -2431,7 +2443,11 @@ def edit_item(item_id):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"])))
+        next_url = url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"]))
+        flash("Item saved.", "success")
+        if is_background_request():
+            return jsonify({"ok": True, "next": next_url})
+        return redirect(next_url)
     values = {
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))

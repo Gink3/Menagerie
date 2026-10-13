@@ -42,6 +42,6 @@
     <noscript><button type="submit">Save photo settings</button></noscript>
   </form>
   <p class="meta" id="gallery-selection-summary">{% if gallery_cover.found %}The first enabled photograph represents this item in the random gallery.{% else %}No photographs selected for galleries.{% endif %}</p>
-  <p class="meta" id="gallery-image-status" role="status">Photo settings saved</p>
+  <div class="save-feedback"><p class="meta" id="gallery-image-status" role="status">Photo settings saved</p><button class="subtle" type="button" id="retry-photo-settings" hidden>Retry</button></div>
 </div>
 <script src="{{ url_for('static', filename='item-images.js') }}" defer></script>

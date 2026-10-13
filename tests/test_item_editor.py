@@ -68,3 +68,26 @@ class ItemEditorTests(DatabaseTest):
         parser = Badges()
         parser.feed(self.client.get('/items/1/edit').get_data(as_text=True))
         self.assertEqual(parser.visible, 1)
+
+    def test_background_item_save_returns_destination_and_rejects_blank_names(self):
+        response = self.client.post('/items/1/edit', data={
+            'csrf_token': 'test-csrf', 'name': 'Updated Sentinel',
+            'return_to': '/collections/1?view=gallery',
+        }, headers={'X-Requested-With': 'fetch'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['ok'])
+        self.assertIn('return_to=', response.json['next'])
+        response = self.client.post('/items/1/edit', data={
+            'csrf_token': 'test-csrf', 'name': '   ',
+        }, headers={'X-Requested-With': 'fetch'})
+        self.assertEqual(response.status_code, 400)
+        with host.app.app_context():
+            self.assertEqual(host.get_db().execute('select name from items where id=1').fetchone()['name'], 'Updated Sentinel')
+
+    def test_background_new_item_save_returns_destination(self):
+        response = self.client.post('/collections/1/items/new', data={
+            'csrf_token': 'test-csrf', 'name': 'New miniature',
+        }, headers={'X-Requested-With': 'fetch'})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json['ok'])
+        self.assertTrue(response.json['next'].startswith('/items/'))
