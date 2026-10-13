@@ -13,7 +13,7 @@
   {% include "_item_images.html" %}
 </section>
 {% endif %}
-<form method="post" enctype="multipart/form-data" class="panel stack editor-form">
+<form method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form>
   {{ csrf_field()|safe }}
   <fieldset class="form-section stack">
     <legend>Overview</legend>
@@ -25,7 +25,7 @@
     <div class="tag-enhanced" hidden>
       <div class="tag-input-box">
         <div class="tag-chip-list" role="list" aria-label="Selected tags"></div>
-        <input id="tag-entry" type="text" role="combobox" aria-labelledby="tag-label" aria-autocomplete="list" aria-controls="tag-suggestions" aria-expanded="false" aria-describedby="tag-help" autocomplete="off" placeholder="Add a tag…">
+        <input id="tag-entry" data-dirty-value type="text" role="combobox" aria-labelledby="tag-label" aria-autocomplete="list" aria-controls="tag-suggestions" aria-expanded="false" aria-describedby="tag-help" autocomplete="off" placeholder="Add a tag…">
       </div>
       <ul id="tag-suggestions" class="tag-suggestions" role="listbox" aria-label="Known tags" hidden></ul>
       <span class="sr-only" id="tag-status" aria-live="polite"></span>

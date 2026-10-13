@@ -26,6 +26,7 @@ document.querySelectorAll(".tag-editor").forEach((editor) => {
   };
   const sync = () => {
     valueField.value = tags.join(", ");
+    valueField.form.dispatchEvent(new CustomEvent("editor:changed"));
     chips.replaceChildren();
     tags.forEach((tag) => {
       const chip = document.createElement("span");
