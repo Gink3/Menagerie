@@ -324,3 +324,14 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 .editor-save-bar [data-item-save-status] { flex: 1 1 180px; font-size: 12px; }
 .has-unsaved-changes [data-item-save-status] { color: var(--accent-dark); }
 @media (max-width: 600px) { .editor-save-bar [data-item-save-status] { flex-basis: 100%; } }
+/* Photo actions live once, above the selectable photograph list. */
+.edit-photo-panel .image-selection-toolbar { align-items: stretch; background: var(--panel); border-bottom: 1px solid var(--line); display: grid; gap: 10px; padding-bottom: 14px; }
+.selected-image-actions { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; }
+.selected-image-actions .image-reorder-controls { width: auto; }
+.selected-image-actions a, .selected-image-actions button { font-size: 12px; }
+.selected-image-more { position: relative; }
+.selected-image-more > summary { cursor: pointer; font-size: 12px; padding: 8px; }
+.selected-image-more[open] > form { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px; position: absolute; right: 0; top: 100%; z-index: 9; }
+.image-filename { font-size: 13px; overflow-wrap: anywhere; }
+#selected-image-status { overflow-wrap: anywhere; }
+.item-image-row:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

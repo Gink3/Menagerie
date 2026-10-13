@@ -1,219 +1,43 @@
-    <div class="item-image-manager">
-    <div class="image-selection-toolbar" aria-label="Selected image actions">
-      <span class="meta" id="selected-image-status">Select an image to manage it.</span>
-      <form action="{{ url_for('delete_selected_item_image', item_id=item.id) }}" method="post" {% if editing_item|default(false) %}data-background-delete="true"{% else %}onsubmit="return confirm('Delete the selected image? This cannot be undone.');"{% endif %}>
-        {{ csrf_field()|safe }}
-        <input id="selected-image-id" name="image_id" type="hidden">
-        <button class="danger" id="delete-selected-image" type="submit" disabled>Delete selected image</button>
-      </form>
+<div class="item-image-manager">
+  <div class="image-selection-toolbar" aria-label="Selected image actions">
+    <span class="meta" id="selected-image-status" role="status">Select a photograph below.</span>
+    <div class="selected-image-actions">
+      <a class="button subtle" id="frame-selected-image" target="_blank" rel="noopener" hidden>Frame image ↗</a>
+      <div class="image-reorder-controls" role="group" aria-label="Reorder selected photograph">
+        <button class="subtle" type="button" data-image-move="-1" disabled>Move earlier</button>
+        <button class="subtle" type="button" data-image-move="1" disabled>Move later</button>
+      </div>
+      <details class="selected-image-more">
+        <summary>More actions</summary>
+        <form action="{{ url_for('delete_selected_item_image', item_id=item.id) }}" method="post" data-background-delete>
+          {{ csrf_field()|safe }}
+          <input id="selected-image-id" name="image_id" type="hidden">
+          <button class="danger" id="delete-selected-image" type="submit" disabled>Delete selected image</button>
+        </form>
+      </details>
     </div>
-    <form class="image-strip" tabindex="-1" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
-      {{ csrf_field()|safe }}
-      {% for image in images %}
-        <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true" tabindex="0" aria-label="Manage image: {{ image.original_name }}">
-          <div class="cropped-image">
-            <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
-          </div>
-          <figcaption class="image-actions">
-            <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
-            <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
-            <span class="meta image-ratio-summary">Random gallery: {{ image.gallery_ratio_width }} × {{ image.gallery_ratio_height }}</span>
-            <a href="{{ url_for('image_settings', image_id=image.id) }}" {% if editing_item|default(false) %}target="_blank" rel="noopener" aria-label="Frame {{ image.original_name }} (opens in a new tab)"{% endif %}>Frame image{% if editing_item|default(false) %} ↗{% endif %}</a>
-            <div class="image-reorder-controls" role="group" aria-label="Reorder {{ image.original_name }}">
-              <button class="subtle" type="button" data-image-move="-1" {% if loop.first %}disabled{% endif %}>Move earlier</button>
-              <button class="subtle" type="button" data-image-move="1" {% if loop.last %}disabled{% endif %}>Move later</button>
-            </div>
-            {% if show_advanced_fields and image.id in captures %}
-              <details><summary>Advanced capture record</summary><pre>{{ captures[image.id]|tojson(indent=2) }}</pre></details>
-            {% endif %}
-          </figcaption>
-        </figure>
-      {% else %}
-        <div class="image-placeholder">No images</div>
-      {% endfor %}
-      {% if images %}
-        <p class="meta" id="gallery-image-status" role="status">Photo settings saved</p>
-      {% endif %}
-    </form>
-    </div>
-
-  <script>
-    const galleryImageForm = document.querySelector(".image-strip");
-    const galleryImageStatus = document.querySelector("#gallery-image-status");
-    const selectedImageId = document.querySelector("#selected-image-id");
-    const selectedImageStatus = document.querySelector("#selected-image-status");
-    const deleteSelectedImage = document.querySelector("#delete-selected-image");
-    const backgroundDelete = document.querySelector('[data-background-delete]');
-    backgroundDelete?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      if (!confirm("Delete the selected image? This cannot be undone.")) return;
-      deleteSelectedImage.disabled = true;
-      try {
-        const response = await fetch(backgroundDelete.action, {
-          method: "POST", headers: { "X-Requested-With": "fetch" }, body: new FormData(backgroundDelete)
-        });
-        if (!response.ok) throw new Error("Delete failed");
-        const row = document.querySelector(`.item-image-row[data-image-id="${selectedImageId.value}"]`);
-        row?.remove();
-        selectedImageId.value = "";
-        selectedImageStatus.textContent = "Image deleted.";
-        renumberGalleryImages();
-        galleryImageStatus.textContent = "Photo settings saved";
-        backgroundDelete.closest(".item-image-manager").querySelector(".image-strip").focus();
-      } catch {
-        selectedImageStatus.textContent = "Could not delete image. Try again.";
-        deleteSelectedImage.disabled = false;
-      }
-    });
-    const openedFrames = new Set();
-    document.querySelectorAll('.item-image-row a[target="_blank"]').forEach((link) => {
-      link.addEventListener("click", () => openedFrames.add(link));
-    });
-    window.addEventListener("focus", async () => {
-      for (const link of openedFrames) {
-        if (!link.isConnected) continue;
-        try {
-          const response = await fetch(link.href, { headers: { "X-Requested-With": "fetch" } });
-          if (!response.ok) continue;
-          const settings = await response.json();
-          const row = link.closest(".item-image-row");
-          row.querySelector(".image-ratio-summary").textContent = `Random gallery: ${settings.gallery_ratio_width} × ${settings.gallery_ratio_height}`;
-          const image = row.querySelector("img");
-          window.MenagerieFraming.set(image, settings.focal_x, settings.focal_y, settings.crop_zoom);
-          if (settings.focal_x !== null && settings.focal_y !== null) continue;
-          image.style.objectPosition = `${settings.crop_x}% ${settings.crop_y}%`;
-          image.style.transformOrigin = `${settings.crop_x}% ${settings.crop_y}%`;
-          image.style.transform = `scale(${settings.crop_zoom})`;
-        } catch { /* Keep the saved preview if the refresh is unavailable. */ }
-      }
-    });
-    let galleryImageSaveTimer = null;
-    let draggedImageRow = null;
-
-    const renumberGalleryImages = () => {
-      let position = 1;
-      const rows = [...document.querySelectorAll(".item-image-row")];
-      rows.forEach((row, index) => {
-        row.querySelector('[data-image-move="-1"]').disabled = index === 0;
-        row.querySelector('[data-image-move="1"]').disabled = index === rows.length - 1;
-        const toggle = row.querySelector(".gallery-image-toggle");
-        const orderInput = row.querySelector(".gallery-image-order");
-        if (!toggle || !orderInput) {
-          return;
-        }
-        if (toggle.checked) {
-          orderInput.value = position;
-          position += 1;
-        }
-      });
-    };
-
-    const saveGalleryImages = async () => {
-      if (!galleryImageForm) {
-        return;
-      }
-      galleryImageStatus.textContent = "Saving photo settings…";
-      try {
-        const response = await fetch(galleryImageForm.action, {
-          method: "POST",
-          headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
-          body: new FormData(galleryImageForm),
-        });
-        galleryImageStatus.textContent = response.ok ? "Photo settings saved" : "Could not save. Change a gallery selection to retry.";
-      } catch {
-        galleryImageStatus.textContent = "Could not save. Change a gallery selection to retry.";
-      }
-    };
-
-    const queueGalleryImageSave = () => {
-      clearTimeout(galleryImageSaveTimer);
-      galleryImageSaveTimer = setTimeout(saveGalleryImages, 200);
-    };
-
-    galleryImageForm?.addEventListener("submit", (event) => {
-      event.preventDefault();
-      renumberGalleryImages();
-      saveGalleryImages();
-    });
-
-    document.querySelectorAll("[data-image-move]").forEach((button) => {
-      button.addEventListener("click", () => {
-        const row = button.closest(".item-image-row");
-        const rows = [...galleryImageForm.querySelectorAll(".item-image-row")];
-        const direction = Number(button.dataset.imageMove);
-        const target = rows[rows.indexOf(row) + direction];
-        if (!target) return;
-        if (direction < 0) target.before(row);
-        else target.after(row);
-        renumberGalleryImages();
-        queueGalleryImageSave();
-        // Keep keyboard focus on the moved row even at a disabled boundary.
-        if (button.disabled) row.focus();
-        else button.focus();
-      });
-    });
-
-    document.querySelectorAll(".gallery-image-toggle").forEach((toggle) => {
-      toggle.addEventListener("change", () => {
-        renumberGalleryImages();
-        queueGalleryImageSave();
-      });
-    });
-    document.querySelectorAll(".item-image-row").forEach((row) => {
-      row.addEventListener("click", (event) => {
-        if (event.target.closest("input, a, button, select, textarea")) {
-          return;
-        }
-        document.querySelectorAll(".item-image-row.selected").forEach((other) => other.classList.remove("selected"));
-        row.classList.add("selected");
-        selectedImageId.value = row.dataset.imageId;
-        deleteSelectedImage.disabled = false;
-        selectedImageStatus.textContent = "Image selected.";
-      });
-      row.addEventListener("keydown", (event) => {
-        if (event.target === row && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          row.click();
-        }
-      });
-      row.addEventListener("dragstart", (event) => {
-        if (event.target.closest("input, a, button, select, textarea")) {
-          event.preventDefault();
-          return;
-        }
-        draggedImageRow = row;
-        row.classList.add("dragging");
-        event.dataTransfer.effectAllowed = "move";
-      });
-      row.addEventListener("dragend", () => {
-        row.classList.remove("dragging");
-        draggedImageRow = null;
-      });
-      row.addEventListener("dragover", (event) => {
-        if (draggedImageRow) {
-          event.preventDefault();
-          row.classList.add("drag-over");
-        }
-      });
-      row.addEventListener("dragleave", () => {
-        row.classList.remove("drag-over");
-      });
-      row.addEventListener("drop", (event) => {
-        row.classList.remove("drag-over");
-        if (!draggedImageRow || draggedImageRow === row) {
-          return;
-        }
-        event.preventDefault();
-        const rows = [...galleryImageForm.querySelectorAll(".item-image-row")];
-        const draggedIndex = rows.indexOf(draggedImageRow);
-        const targetIndex = rows.indexOf(row);
-        if (draggedIndex < targetIndex) {
-          row.after(draggedImageRow);
-        } else {
-          row.before(draggedImageRow);
-        }
-        renumberGalleryImages();
-        queueGalleryImageSave();
-      });
-    });
-  </script>
+  </div>
+  <form class="image-strip" tabindex="-1" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
+    {{ csrf_field()|safe }}
+    {% for image in images %}
+      <figure class="item-image-row" data-image-id="{{ image.id }}" data-image-name="{{ image.original_name }}" data-frame-url="{{ url_for('image_settings', image_id=image.id) }}" draggable="true" tabindex="0" aria-label="Select photograph: {{ image.original_name }}">
+        <div class="cropped-image">
+          <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+        </div>
+        <figcaption class="image-actions">
+          <strong class="image-filename">{{ image.original_name }}</strong>
+          <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
+          <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
+          <span class="meta image-ratio-summary">Random gallery: {{ image.gallery_ratio_width }} × {{ image.gallery_ratio_height }}</span>
+          {% if show_advanced_fields and image.id in captures %}
+            <details><summary>Capture record</summary><pre>{{ captures[image.id]|tojson(indent=2) }}</pre></details>
+          {% endif %}
+          <noscript><a href="{{ url_for('image_settings', image_id=image.id) }}">Frame image</a></noscript>
+        </figcaption>
+      </figure>
+    {% endfor %}
+    <noscript><button type="submit">Save photo settings</button></noscript>
+  </form>
+  <p class="meta" id="gallery-image-status" role="status">Photo settings saved</p>
+</div>
+<script src="{{ url_for('static', filename='item-images.js') }}" defer></script>

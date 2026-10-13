@@ -44,12 +44,6 @@
     </div>
     <span class="meta" id="crop-status" role="status" aria-live="polite">Saved automatically</span>
   </form>
-  <details class="framing-image-actions"><summary>Image actions</summary>
-  <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="framing-delete-form">
-    {{ csrf_field()|safe }}
-    <button class="danger" type="submit">Delete image</button>
-  </form>
-  </details>
 </section>
 <section class="framing-canvas">
   <div class="framing-preview-heading"><h2>Gallery preview</h2><p class="meta">Drag to reposition · Scroll to zoom</p></div>

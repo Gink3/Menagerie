@@ -43,15 +43,8 @@
       {% endif %}
       <p class="meta" id="item-photo-status" aria-live="polite">Image 1 of {{ images|length }}</p>
     {% else %}
-      <div class="image-placeholder item-photo-empty">No photographs yet{% if can_manage %}<a href="{{ url_for('edit_item', item_id=item.id) }}">Add images</a>{% endif %}</div>
+      <div class="image-placeholder item-photo-empty">No photographs yet</div>
     {% endif %}
-  {% if can_manage and images %}
-    <details class="image-management">
-    <summary>Manage images <span class="meta">{{ images|length }}</span></summary>
-    <p class="meta">Choose gallery images, drag to reorder, or select an image to delete.</p>
-    {% include "_item_images.html" %}
-    </details>
-  {% endif %}
   </div>
   <div class="panel stack item-metadata">
     <h2>About this item</h2>

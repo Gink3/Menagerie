@@ -6,10 +6,9 @@
   <p>Describe your item, add its details, and bring it to life with photographs.</p></div>
 </div>
 {% if item and images %}
-<section class="panel editor-form edit-photo-panel">
+<section id="photographs" class="panel editor-form edit-photo-panel">
   <h2>Photographs</h2>
   <p class="meta">Photo settings save automatically. Select a photo to manage it. Framing opens in a separate tab.</p>
-  {% set editing_item = true %}
   {% include "_item_images.html" %}
 </section>
 {% endif %}
