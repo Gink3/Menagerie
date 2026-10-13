@@ -47,3 +47,24 @@ class ItemEditorTests(DatabaseTest):
         self.assertEqual(self.client.post('/items/1/images/delete', data={
             'csrf_token': 'test-csrf', 'image_id': '1',
         }, headers={'X-Requested-With': 'fetch'}).status_code, 403)
+
+    def test_only_first_enabled_photo_is_marked_as_random_gallery_image(self):
+        from html.parser import HTMLParser
+
+        class Badges(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.visible = 0
+            def handle_starttag(self, tag, attrs):
+                attrs = dict(attrs)
+                if attrs.get('class') == 'gallery-cover-badge' and 'hidden' not in attrs:
+                    self.visible += 1
+
+        with host.app.app_context():
+            db = host.get_db()
+            db.execute("insert into item_images(item_id,filename,original_name,gallery_enabled,gallery_position) values(1,'second.png','Second',1,1)")
+            db.execute("insert into item_images(item_id,filename,original_name,gallery_enabled,gallery_position) values(1,'third.png','Third',1,2)")
+            db.commit()
+        parser = Badges()
+        parser.feed(self.client.get('/items/1/edit').get_data(as_text=True))
+        self.assertEqual(parser.visible, 1)

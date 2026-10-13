@@ -19,6 +19,7 @@
   </div>
   <form class="image-strip" tabindex="-1" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
     {{ csrf_field()|safe }}
+    {% set gallery_cover = namespace(found=false) %}
     {% for image in images %}
       <figure class="item-image-row" data-image-id="{{ image.id }}" data-image-name="{{ image.original_name }}" data-frame-url="{{ url_for('image_settings', image_id=image.id) }}" draggable="true" tabindex="0" aria-label="Select photograph: {{ image.original_name }}">
         <div class="cropped-image">
@@ -26,6 +27,8 @@
         </div>
         <figcaption class="image-actions">
           <strong class="image-filename">{{ image.original_name }}</strong>
+          <span class="gallery-cover-badge" {% if not image.gallery_enabled or gallery_cover.found %}hidden{% endif %}>Random gallery image</span>
+          {% if image.gallery_enabled %}{% set gallery_cover.found = true %}{% endif %}
           <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
           <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
           <span class="meta image-ratio-summary">Random gallery: {{ image.gallery_ratio_width }} × {{ image.gallery_ratio_height }}</span>
@@ -38,6 +41,7 @@
     {% endfor %}
     <noscript><button type="submit">Save photo settings</button></noscript>
   </form>
+  <p class="meta" id="gallery-selection-summary">{% if gallery_cover.found %}The first enabled photograph represents this item in the random gallery.{% else %}No photographs selected for galleries.{% endif %}</p>
   <p class="meta" id="gallery-image-status" role="status">Photo settings saved</p>
 </div>
 <script src="{{ url_for('static', filename='item-images.js') }}" defer></script>

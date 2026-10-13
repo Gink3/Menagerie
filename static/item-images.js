@@ -32,8 +32,13 @@
   const renumber = () => {
     let position = 1;
     rows().forEach((row) => {
-      if (row.querySelector(".gallery-image-toggle").checked) row.querySelector(".gallery-image-order").value = position++;
+      const enabled = row.querySelector(".gallery-image-toggle").checked;
+      row.querySelector(".gallery-cover-badge").hidden = !enabled || position !== 1;
+      if (enabled) row.querySelector(".gallery-image-order").value = position++;
     });
+    manager.querySelector("#gallery-selection-summary").textContent = position > 1
+      ? "The first enabled photograph represents this item in the random gallery."
+      : "No photographs selected for galleries.";
     select(selected);
   };
   const save = async () => {
