@@ -8,6 +8,14 @@
   document.querySelectorAll("a[data-collection-back]").forEach((link) => link.addEventListener("click", () => {
     storage.set("collection-return", new URL(link.href).pathname + new URL(link.href).search);
   }));
+  document.addEventListener("submit", (event) => {
+    const target = event.target.querySelector('[name="return_to"]')?.value;
+    if (!target) return;
+    const url = new URL(target, location.origin);
+    if (url.origin === location.origin && /^\/collections\/\d+$/.test(url.pathname)) {
+      storage.set("collection-return", url.pathname + url.search);
+    }
+  });
   if (!document.querySelector("[data-collection-browser]")) return;
   const url = location.pathname + location.search;
   const key = `collection-scroll:${url}`;

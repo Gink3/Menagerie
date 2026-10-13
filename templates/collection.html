@@ -9,7 +9,7 @@
   </div>
   {% if can_manage %}
     <div class="actions">
-      <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id) }}">Edit collection</a>
+      <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id, return_to=request.full_path.rstrip('?')) }}">Edit collection</a>
       <a class="button" href="{{ url_for('new_item', collection_id=collection.id, return_to=request.full_path.rstrip('?')) }}">New item</a>
     </div>
   {% endif %}

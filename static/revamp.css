@@ -349,3 +349,10 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 .edit-photo-panel .image-actions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
 .edit-photo-panel .image-selection-toolbar { position: sticky; top: 0; z-index: 6; }
 .editor-save-bar { border: 1px solid var(--line); border-radius: 10px; margin: 16px 0 0; max-width: 900px; }
+.field-more-actions { border-top: 1px solid var(--line); padding-top: 12px; }
+.field-more-actions summary { cursor: pointer; font-size: 12px; }
+.field-more-actions[open] { display: grid; gap: 12px; }
+.field-more-actions input { max-width: 120px; }
+.field-more-actions button { justify-self: start; }
+.pending-field-removal { align-items: center; border: 1px solid var(--line); border-radius: 8px; display: flex; gap: 12px; justify-content: space-between; padding: 12px; }
+.pending-field-removal span { font-size: 13px; overflow-wrap: anywhere; }

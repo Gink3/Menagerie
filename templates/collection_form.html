@@ -15,6 +15,13 @@
       <span class="meta field-hint">Enter one option per line.</span>
       <textarea name="field_options" rows="4">{{ (field|dropdown_options)|join('\n') if field else '' }}</textarea>
     </label>
+    {% if field and g.user.role == 'admin' %}
+    <details class="field-more-actions">
+      <summary>More actions</summary>
+      <label>Position (0 first)<input name="field_position_{{ field.id }}" type="number" min="0" value="{{ field.position }}"></label>
+      <button type="button" class="danger" data-remove-existing-field="{{ field.id }}">Remove field</button>
+    </details>
+    {% endif %}
     {% if not field %}<button type="button" class="subtle remove-collection-field">Remove</button>{% endif %}
   </div>
 {% endmacro %}
@@ -24,8 +31,9 @@
   <h1>{% if collection %}Edit{% else %}New{% endif %} collection</h1>
   <p>Give your collection a home, then choose the details you want to track.</p></div>
 </div>
-<form method="post" class="panel stack editor-form">
+<form method="post" class="panel stack editor-form" data-dirty-form>
   {{ csrf_field()|safe }}
+  {% if collection %}<input type="hidden" name="return_to" value="{{ return_to }}">{% endif %}
   <fieldset class="form-section stack">
   <legend>Collection details</legend>
   <label>Name<input name="name" value="{{ collection.name if collection else '' }}" required></label>
@@ -40,7 +48,7 @@
     </label>
   {% endif %}
   </fieldset>
-  <fieldset class="collection-fields form-section">
+  <fieldset id="fields" class="collection-fields form-section">
     <legend>{% if collection %}Fields{% else %}Initial fields{% endif %}</legend>
     <p class="meta">Name each field and choose how its value is entered. UUID is included automatically.</p>
     <div id="collection-field-list" class="collection-field-list">
@@ -50,11 +58,12 @@
         {{ field_row() }}
       {% endif %}
     </div>
+    <div id="pending-field-removals" class="stack" aria-live="polite"></div>
     <button type="button" class="subtle" id="add-collection-field">Add field</button>
   </fieldset>
-  <div class="form-footer">
+  <div class="form-footer editor-save-bar">
     <button type="submit">{% if collection %}Save collection{% else %}Create collection{% endif %}</button>
-    <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id) if collection else url_for('collections_index') }}">Cancel</a>
+    <a class="button subtle" {% if collection %}data-collection-back{% endif %} href="{{ return_to if collection else url_for('collections_index') }}">Cancel</a>
   </div>
 </form>
 <template id="collection-field-template">{{ field_row() }}</template>
@@ -107,6 +116,29 @@
       const next = row.nextElementSibling || row.previousElementSibling;
       row.remove();
       (next ? next.querySelector('[name="field_name"]') : document.getElementById("add-collection-field")).focus();
+    });
+    const removeExisting = row.querySelector("[data-remove-existing-field]");
+    if (removeExisting) removeExisting.addEventListener("click", () => {
+      const controls = [...row.querySelectorAll("input, select, textarea, button")].filter((control) => !control.disabled);
+      controls.forEach((control) => { control.disabled = true; });
+      row.hidden = true;
+      const pending = document.createElement("div");
+      pending.className = "pending-field-removal";
+      const value = document.createElement("input");
+      value.type = "hidden"; value.name = "delete_field_ids"; value.value = removeExisting.dataset.removeExistingField;
+      const message = document.createElement("span");
+      message.textContent = `${row.querySelector('[name="field_name"]').value} and its saved item values will be deleted when you save.`;
+      const undo = document.createElement("button");
+      undo.type = "button"; undo.className = "subtle"; undo.textContent = "Undo";
+      undo.addEventListener("click", () => {
+        controls.forEach((control) => { control.disabled = false; });
+        row.hidden = false; pending.remove(); removeExisting.focus();
+        fieldList.closest("form").dispatchEvent(new CustomEvent("editor:changed"));
+      });
+      pending.append(value, message, undo);
+      document.getElementById("pending-field-removals").append(pending);
+      undo.focus();
+      fieldList.closest("form").dispatchEvent(new CustomEvent("editor:changed"));
     });
     updateField(row);
   };

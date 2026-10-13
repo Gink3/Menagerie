@@ -2201,6 +2201,25 @@ def edit_collection(collection):
         "select id, username from users where role in ('admin', 'collector') order by username"
     ).fetchall()
     if request.method == "POST":
+        existing_fields = {field["id"]: field for field in get_fields(collection["id"])}
+        try:
+            deleted_fields = {int(value) for value in request.form.getlist("delete_field_ids")}
+            positions = {field_id: int(request.form[f"field_position_{field_id}"])
+                         for field_id in existing_fields if f"field_position_{field_id}" in request.form}
+        except (TypeError, ValueError):
+            abort(400, description="Choose valid field positions and removals.")
+        if (deleted_fields or positions) and g.user["role"] != "admin":
+            abort(403)
+        if not deleted_fields <= existing_fields.keys() or any(value < 0 for value in positions.values()):
+            abort(400, description="Choose fields and positions from this collection.")
+        try:
+            field_specs = [(int(field_id) if field_id else None, name, kind, options)
+                           for field_id, name, kind, options in dropdown_fields.specs(sys.modules[__name__], request.form)]
+        except (TypeError, ValueError):
+            abort(400, description="Choose valid collection fields.")
+        if any(field_id and (field_id not in existing_fields or field_id in deleted_fields)
+               for field_id, _, _, _ in field_specs):
+            abort(400, description="Choose fields from this collection.")
         owner_id = collection["owner_id"]
         if g.user["role"] == "admin":
             owner_id = valid_collection_owner_id(request.form.get("owner_id"), collection["owner_id"] or g.user["id"])
@@ -2217,11 +2236,11 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_id, field_name, field_type, options_json in dropdown_fields.specs(sys.modules[__name__], request.form):
+        for field_id, field_name, field_type, options_json in field_specs:
             if field_id:
                 db.execute(
-                    "update fields set name = ?, field_type = ?, options_json = ? where id = ? and collection_id = ?",
-                    (field_name, field_type, options_json, field_id, collection["id"]),
+                    "update fields set name = ?, field_type = ?, options_json = ?, position = ? where id = ? and collection_id = ?",
+                    (field_name, field_type, options_json, positions.get(field_id, existing_fields[field_id]["position"]), field_id, collection["id"]),
                 )
             else:
                 db.execute(
@@ -2229,12 +2248,16 @@ def edit_collection(collection):
                     (collection["id"], field_name, field_type, next_position, options_json),
                 )
                 next_position += 1
+        for field_id in deleted_fields:
+            db.execute("delete from item_values where field_id = ?", (field_id,))
+            db.execute("delete from fields where id = ?", (field_id,))
         db.commit()
         flash("Collection saved.", "success")
-        return redirect(url_for("collection_view", collection_id=collection["id"]))
+        return redirect(collection_return_url(collection["id"]))
     return render_template(
         "collection_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         collectors=collectors,
         fields=get_fields(collection["id"]),
         field_type_choices=FIELD_TYPE_CHOICES,
