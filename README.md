@@ -163,6 +163,12 @@ Photo updates use the same multipart metadata/images format and UUID `Idempotenc
 
 Conflict replies include `code`: `identity_conflict`, `submission_changed`, or `item_deleted`. For identity conflicts, an owned conflicting item and its edit URL are returned when available; another owner's item is never disclosed. Mini Scan keeps conflicting drafts and offers explicit recovery, while uncertain network/server failures retain the original frozen submission for retry. Offline Capture drafts use cached schemas and defer tag lookup until upload.
 
+### Editing items and tags
+
+The item editor shows existing photographs and their gallery controls. Gallery selection, ordering, and deletion save immediately. **Frame image** opens its settings in a separate tab so item details remain in the editor; saved framing settings refresh when returning. **Save item** saves item details, tags, and newly uploaded photographs.
+
+Tags appear as individual removable chips. Type to see suggestions from tags used in the collection owner's items, or enter a new tag. Press Enter or comma to add, use arrow keys to select a suggestion, and click × to remove. Tags are normalized to lowercase and duplicates are ignored. Any tag still being typed is included when saving. Without JavaScript, the editor retains the comma-separated tag field.
+
 ### Collection requirements
 
 Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, the built-in UUID and one selected photo are required for Mini Scan uploads. Mini Scan populates `item_uuid` for every scanned or manually created item. There is no separate Mini ID requirement; existing custom Mini ID fields and their values are left intact as ordinary fields. RFID is an optional association that can be attached or replaced later in Menagerie. No fields are added to existing collections automatically.

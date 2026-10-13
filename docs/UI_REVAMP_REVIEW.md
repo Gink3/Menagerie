@@ -11,6 +11,8 @@ The refresh uses Linear's navigation hierarchy, Airtable's collection controls, 
 - Collection cover images and item counts, image thumbnails in tables, and quieter gallery cards. Dropdown option management is available in an expandable section.
 - Each photograph has its own random-gallery width × height ratio, configured on its Frame image page. Defaults are 1 × 1; the site-wide ratio control has been removed. Random gallery tiles frame photographs independently, while personal galleries retain saved item layouts.
 - A large item photograph with selectable thumbnails and metadata beside it, stacking on phones. Image management expands below the photographs; the existing framing, gallery selection, autosave, and drag ordering remain available. Move earlier/later buttons support keyboard and touch ordering.
+- The item editor shows existing photographs with gallery selection, saved ratio, ordering controls, and deletion. Image changes save immediately, separately from item details. Framing opens in a new tab and its saved settings refresh when returning to the editor.
+- Tag chips offer known-tag autocomplete, keyboard selection, removal, and new tags. Suggestions come from the collection owner’s items; other collectors’ private tags are excluded. Enter/comma adds tags, arrow keys navigate suggestions, and text still being typed is included when saving.
 - Item forms grouped into Overview, Collection details, Identification, and Photographs. Identification expands on demand; its values still submit when collapsed. Collection and settings forms use similarly clear sections. Editing forms include Cancel actions.
 - Consistent typography, restrained borders, rounded controls, focus indicators, responsive layouts, and reduced-motion support. Theme color variables remain in `static/style.css`; the refresh is in `static/revamp.css`.
 
@@ -43,6 +45,6 @@ Automated tests cover the existing application plus ownership of collection cove
 .venv/bin/python -m unittest discover -s tests
 ```
 
-Chromium checks used isolated temporary sample data at desktop (1440 px) and phone (390 px) widths. They exercised all four themes, view switches retaining search/filter/sort values, photograph selection, image toggle autosave, button-based image reordering, dropdown options and field removal, mobile navigation, form validation and submission, and public permissions. No JavaScript errors or page-level horizontal overflow were observed in those flows. Wide collection tables scroll inside their container.
+Chromium checks used isolated temporary sample data at desktop (1440 px) and phone (390 px) widths. They exercised all four themes, view switches retaining search/filter/sort values, photograph selection, image toggle autosave, button-based image reordering, dropdown options and field removal, mobile navigation, form validation and submission, tag autocomplete and keyboard interactions, photo deletion without losing unsaved details, framing refresh after returning from another tab, and public permissions. No JavaScript errors or page-level horizontal overflow were observed in those flows. Wide collection tables scroll inside their container.
 
 The branch has not been merged into `main`.
