@@ -343,3 +343,9 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 [data-state="error"], .field-error { color: var(--danger, var(--accent-dark)); }
 .field-error { display: block; font-size: 12px; font-weight: 400; letter-spacing: 0; text-transform: none; }
 [aria-invalid="true"] { border-color: var(--danger, var(--accent)); }
+/* Uploads and existing photographs share one workspace and one item save bar. */
+.photo-upload-section { border-top: 1px solid var(--line); margin-top: 20px; padding-top: 16px; }
+.photo-upload-section > p { margin: 0; }
+.edit-photo-panel .image-actions { display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr); }
+.edit-photo-panel .image-selection-toolbar { position: sticky; top: 0; z-index: 6; }
+.editor-save-bar { border: 1px solid var(--line); border-radius: 10px; margin: 16px 0 0; max-width: 900px; }

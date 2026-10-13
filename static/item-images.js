@@ -13,16 +13,17 @@
   const rows = () => [...form.querySelectorAll(".item-image-row")];
   let selected = null;
   let dragged = null;
+  let deleting = false;
   const openedFrames = new Map();
   const select = (row) => {
     selected = row;
     rows().forEach((other) => other.classList.toggle("selected", other === row));
     selectedId.value = row?.dataset.imageId || "";
-    selectedStatus.textContent = row ? row.dataset.imageName : "Select a photograph below.";
+    window.MenagerieFeedback.set(selectedStatus, "saved", row ? row.dataset.imageName : "Select a photograph below.");
     frameLink.hidden = !row;
     if (row) frameLink.href = row.dataset.frameUrl;
     else frameLink.removeAttribute("href");
-    deleteButton.disabled = !row;
+    deleteButton.disabled = !row || deleting;
     moves.forEach((button) => {
       const index = rows().indexOf(row);
       button.disabled = !row || index + Number(button.dataset.imageMove) < 0 || index + Number(button.dataset.imageMove) >= rows().length;
@@ -76,7 +77,8 @@
   });
   deleteForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    if (!selected || !confirm("Delete the selected image? This cannot be undone.")) return;
+    if (deleting || !selected || !confirm("Delete the selected image? This cannot be undone.")) return;
+    deleting = true;
     const row = selected;
     const data = new FormData(deleteForm);
     deleteButton.disabled = true;
@@ -88,7 +90,8 @@
       renumber();
       selectedStatus.textContent = "Image deleted.";
       form.focus();
-    } catch { window.MenagerieFeedback.set(selectedStatus, "error", "Could not delete image. Retry using Delete selected image."); deleteButton.disabled = !selected; }
+    } catch { window.MenagerieFeedback.set(selectedStatus, "error", "Could not delete image. Retry using Delete selected image."); }
+    finally { deleting = false; deleteButton.disabled = !selected; }
   });
   frameLink.addEventListener("click", () => { if (selected) openedFrames.set(selected.dataset.imageId, selected.dataset.frameUrl); });
   window.addEventListener("focus", async () => {

@@ -2029,9 +2029,12 @@ def image_settings(image_id):
             (crop_x, crop_y, crop_zoom, *ratios, focal_x, focal_y, image["id"]),
         )
         get_db().commit()
+        next_url = url_for("edit_item", item_id=image["item_id"], return_to=collection_return_url(image["collection_id"])) + "#photographs"
         if is_background_request():
-            return jsonify({"ok": True, "next": url_for("my_gallery")})
+            return jsonify({"ok": True, "next": next_url})
         flash("Image settings saved.", "success")
+        if request.form.get("finish_framing"):
+            return redirect(next_url)
         if request.form.get("return_to_gallery"):
             return redirect(url_for("my_gallery"))
         return redirect(url_for("item_detail", item_id=image["item_id"]))
@@ -2039,7 +2042,7 @@ def image_settings(image_id):
         return jsonify({key: image[key] for key in (
             "crop_x", "crop_y", "crop_zoom", "gallery_ratio_width", "gallery_ratio_height", "focal_x", "focal_y"
         )})
-    return render_template("image_crop.html", image=image)
+    return render_template("image_crop.html", image=image, return_to=collection_return_url(image["collection_id"]))
 
 
 @app.route("/images/<int:image_id>/delete", methods=("POST",))

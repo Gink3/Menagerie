@@ -126,7 +126,7 @@
     if (!await saving.flush()) return;
     // Leave only after the latest framing save completes.
     const body = new FormData(cropForm);
-    body.set("return_to_gallery", "1");
+    body.set("finish_framing", "1");
     const result = await window.MenagerieFeedback.request(location.href, {
       method: "POST", headers: { "X-Requested-With": "fetch" }, body
     }).catch((error) => {

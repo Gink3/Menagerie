@@ -27,3 +27,16 @@ class BrowseContextTests(DatabaseTest):
             with self.subTest(target=target):
                 page = self.client.get('/items/1', query_string={'return_to': target})
                 self.assertIn(b'data-collection-back href="/collections/1"', page.data)
+
+    def test_finishing_framing_returns_to_shared_photo_editor_with_context(self):
+        with host.app.app_context():
+            db = host.get_db()
+            db.execute("insert into item_images(item_id,filename,original_name) values(1,'front.png','Front')")
+            db.commit()
+        result = self.client.post('/images/1/settings', data={
+            'csrf_token': 'test-csrf', 'finish_framing': '1',
+            'return_to': '/collections/1?view=gallery',
+        }, headers={'X-Requested-With': 'fetch'})
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.json['next'].startswith('/items/1/edit?'))
+        self.assertTrue(result.json['next'].endswith('#photographs'))

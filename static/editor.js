@@ -12,7 +12,7 @@
     const changed = () => snapshot() !== baseline;
     const update = () => {
       form.classList.toggle("has-unsaved-changes", changed());
-      const status = form.querySelector("[data-item-save-status]");
+      const status = document.querySelector("[data-item-save-status]");
       if (status && !form.dataset.saving) window.MenagerieFeedback.set(status, changed() ? "pending" : "saved",
         changed() ? "Unsaved item details or uploads" : "No unsaved item changes");
       form.dispatchEvent(new CustomEvent("editor:dirty", { detail: { dirty: changed() } }));
@@ -25,8 +25,8 @@
       if (!event.defaultPrevented && !form.hasAttribute("data-background-save")) leaving = true;
     });
     if (form.hasAttribute("data-background-save")) {
-      const status = form.querySelector("[data-item-save-status]");
-      const submit = form.querySelector('button[type="submit"]');
+      const status = document.querySelector("[data-item-save-status]");
+      const submit = document.querySelector(`button[type="submit"][form="${form.id}"]`) || form.querySelector('button[type="submit"]');
       form.querySelector('[name="name"]').addEventListener("input", (event) => {
         event.target.setCustomValidity(event.target.value.trim() ? "" : "Enter an item name.");
       });

@@ -5,14 +5,20 @@
   <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
   <p>Describe your item, add its details, and bring it to life with photographs.</p></div>
 </div>
-{% if item and images %}
 <section id="photographs" class="panel editor-form edit-photo-panel">
   <h2>Photographs</h2>
-  <p class="meta">Photo settings save automatically. Select a photo to manage it. Framing opens in a separate tab.</p>
+  {% if item and images %}
+  <p class="meta">Existing photo settings save automatically. Select a photo to manage it. Framing opens in a separate tab.</p>
   {% include "_item_images.html" %}
+  {% endif %}
+  <div class="stack photo-upload-section" data-image-uploads>
+    <p class="meta form-hint">New photographs upload when you save the item.</p>
+    <label>Add photographs<input form="item-details" name="images" type="file" accept="image/*" multiple></label>
+    <p class="meta" data-upload-status role="status" hidden></p>
+    <div class="pending-images" data-upload-previews aria-label="Photographs waiting to upload" hidden></div>
+  </div>
 </section>
-{% endif %}
-<form method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form data-background-save>
+<form id="item-details" method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form data-background-save>
   {{ csrf_field()|safe }}
   <input type="hidden" name="return_to" value="{{ return_to }}">
   <fieldset class="form-section stack">
@@ -78,19 +84,12 @@
     {% for field in fields if field.capture_key %}<dt>{{ field.name }}</dt><dd>{{ values.get(field.id, '') or 'Unknown' }}</dd>{% endfor %}
     </dl></details>
   {% endif %}
-  <fieldset class="form-section stack" data-image-uploads>
-    <legend>{% if item and images %}Add photographs{% else %}Photographs{% endif %}</legend>
-    <p class="meta form-hint">Add one or more images. You can choose gallery images and adjust framing after saving.</p>
-    <label>Add images<input name="images" type="file" accept="image/*" multiple></label>
-    <p class="meta" data-upload-status role="status" hidden></p>
-    <div class="pending-images" data-upload-previews aria-label="Photographs waiting to upload" hidden></div>
-  </fieldset>
+</form>
   <div class="form-footer editor-save-bar" aria-label="Item actions">
     <span class="meta" data-item-save-status role="status">No unsaved item changes</span>
-    <button type="submit">Save item</button>
+    <button type="submit" form="item-details">Save item</button>
     <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id, return_to=return_to) if item else return_to }}">Cancel</a>
   </div>
-</form>
 <script src="{{ url_for('static', filename='tags.js') }}" defer></script>
 <script src="{{ url_for('static', filename='uploads.js') }}" defer></script>
 {% endblock %}
