@@ -12,7 +12,7 @@
       {% for image in images %}
         <figure class="item-image-row" data-image-id="{{ image.id }}" draggable="true" tabindex="0" aria-label="Manage image: {{ image.original_name }}">
           <div class="cropped-image">
-            <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+            <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
           </div>
           <figcaption class="image-actions">
             <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
@@ -79,6 +79,8 @@
           const row = link.closest(".item-image-row");
           row.querySelector(".image-ratio-summary").textContent = `Random gallery: ${settings.gallery_ratio_width} × ${settings.gallery_ratio_height}`;
           const image = row.querySelector("img");
+          window.MenagerieFraming.set(image, settings.focal_x, settings.focal_y, settings.crop_zoom);
+          if (settings.focal_x !== null && settings.focal_y !== null) continue;
           image.style.objectPosition = `${settings.crop_x}% ${settings.crop_y}%`;
           image.style.transformOrigin = `${settings.crop_x}% ${settings.crop_y}%`;
           image.style.transform = `scale(${settings.crop_zoom})`;

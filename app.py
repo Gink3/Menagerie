@@ -1031,6 +1031,8 @@ def init_db():
         "crop_x": "real not null default 50",
         "crop_y": "real not null default 50",
         "crop_zoom": "real not null default 1",
+        "focal_x": "real",
+        "focal_y": "real",
         "gallery_ratio_width": "integer not null default 1",
         "gallery_ratio_height": "integer not null default 1",
     }
@@ -1994,10 +1996,24 @@ def image_settings(image_id):
             if not 1 <= value <= 6:
                 abort(400, description="Image aspect ratio must use whole numbers from 1 to 6.")
             ratios.append(value)
+        focal_x, focal_y = image["focal_x"], image["focal_y"]
+        if request.form.get("focal_mode") == "manual":
+            import math
+            try:
+                focal_x = float(request.form["focal_x"])
+                focal_y = float(request.form["focal_y"])
+            except (KeyError, ValueError):
+                abort(400, description="Choose a focal point within the image.")
+            if not all(math.isfinite(value) and 0 <= value <= 100 for value in (focal_x, focal_y)):
+                abort(400, description="Focal point coordinates must be between 0 and 100.")
+        elif request.form.get("focal_mode") == "legacy":
+            focal_x = focal_y = None
+        elif "focal_mode" in request.form:
+            abort(400, description="Choose a valid focal point mode.")
         get_db().execute(
             "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ?, "
-            "gallery_ratio_width = ?, gallery_ratio_height = ? where id = ?",
-            (crop_x, crop_y, crop_zoom, *ratios, image["id"]),
+            "gallery_ratio_width = ?, gallery_ratio_height = ?, focal_x = ?, focal_y = ? where id = ?",
+            (crop_x, crop_y, crop_zoom, *ratios, focal_x, focal_y, image["id"]),
         )
         get_db().commit()
         if is_background_request():
@@ -2008,7 +2024,7 @@ def image_settings(image_id):
         return redirect(url_for("item_detail", item_id=image["item_id"]))
     if is_background_request():
         return jsonify({key: image[key] for key in (
-            "crop_x", "crop_y", "crop_zoom", "gallery_ratio_width", "gallery_ratio_height"
+            "crop_x", "crop_y", "crop_zoom", "gallery_ratio_width", "gallery_ratio_height", "focal_x", "focal_y"
         )})
     return render_template("image_crop.html", image=image)
 

@@ -4,6 +4,7 @@
 <section class="framing-toolbar" aria-label="Gallery framing controls">
   <form id="crop-form" method="post" class="framing-zoom-control">
     {{ csrf_field()|safe }}
+    <input id="focal-mode" name="focal_mode" type="hidden" value="{{ 'manual' if image.focal_x is not none else 'legacy' }}">
     <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
     <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
     <label for="crop-zoom">Zoom</label>
@@ -16,6 +17,12 @@
       <label>Height<input id="image-ratio-height" name="gallery_ratio_height" type="number" min="1" max="6" step="1" required value="{{ image.gallery_ratio_height }}" aria-describedby="image-ratio-hint"></label>
     </fieldset>
     <p class="meta image-ratio-hint" id="image-ratio-hint">Width × height in gallery units (1–6). Applies to this image in the random gallery. Default: 1 × 1.</p>
+    <fieldset class="focal-controls">
+      <legend>Focal point</legend>
+      <label class="check-row"><input type="checkbox" id="use-focal-point" {% if image.focal_x is not none %}checked{% endif %}> Center on a chosen detail</label>
+      <label>Horizontal<input id="focal-x" name="focal_x" type="range" min="0" max="100" step="0.1" value="{{ image.focal_x if image.focal_x is not none else 50 }}"></label>
+      <label>Vertical<input id="focal-y" name="focal_y" type="range" min="0" max="100" step="0.1" value="{{ image.focal_y if image.focal_y is not none else 50 }}"></label>
+    </fieldset>
     <button class="subtle" id="reset-crop" type="button">Reset framing</button>
     <span class="meta" id="crop-status" aria-live="polite">Saved automatically</span>
     <button name="return_to_gallery" type="submit" value="1">Save</button>
@@ -28,17 +35,32 @@
 <header class="framing-titlebar">
   <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
   <h1>Gallery framing</h1>
-  <p>Drag to pan · Scroll to zoom · Changes save automatically</p>
+  <p>Choose a detail in the original, then zoom to frame it. Changes save automatically.</p>
 </header>
+<section class="focal-source-panel">
+  <h2>Choose focal point</h2>
+  <p class="meta">Click or tap the face, or another detail, in the original photograph. Use the focus sliders for precise or keyboard adjustments.</p>
+  <button class="focal-source" id="focal-source" type="button" aria-label="Choose a focal point in the original photograph">
+    <img id="focal-source-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Original {{ image.original_name }}">
+    <span class="focal-marker" id="focal-marker" aria-hidden="true" hidden></span>
+  </button>
+</section>
 <section class="framing-canvas">
   <div class="crop-preview" id="crop-preview" style="--crop-ratio: {{ image.gallery_ratio_width / image.gallery_ratio_height }}" aria-label="Gallery crop preview">
-    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
 </section>
 <script>
   const cropBox = document.querySelector("#crop-preview");
   const cropForm = document.querySelector("#crop-form");
   const preview = document.querySelector("#crop-preview-image");
+  const focalMode = document.querySelector("#focal-mode");
+  const focusEnabled = document.querySelector("#use-focal-point");
+  const focalX = document.querySelector("#focal-x");
+  const focalY = document.querySelector("#focal-y");
+  const focalSource = document.querySelector("#focal-source");
+  const focalSourceImage = document.querySelector("#focal-source-image");
+  const focalMarker = document.querySelector("#focal-marker");
   const cropX = document.querySelector("#crop-x");
   const cropY = document.querySelector("#crop-y");
   const cropZoom = document.querySelector("#crop-zoom");
@@ -53,9 +75,18 @@
     if (ratioWidth.validity.valid && ratioHeight.validity.valid) {
       cropBox.style.setProperty("--crop-ratio", Number(ratioWidth.value) / Number(ratioHeight.value));
     }
-    preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
-    preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
-    preview.style.transform = `scale(${cropZoom.value})`;
+    focalMode.value = focusEnabled.checked ? "manual" : "legacy";
+    window.MenagerieFraming.set(preview,
+      focusEnabled.checked ? Number(focalX.value) : null,
+      focusEnabled.checked ? Number(focalY.value) : null, Number(cropZoom.value));
+    if (!focusEnabled.checked) {
+      preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
+      preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
+      preview.style.transform = `scale(${cropZoom.value})`;
+    }
+    focalMarker.hidden = !focusEnabled.checked;
+    focalMarker.style.left = `${focalX.value}%`;
+    focalMarker.style.top = `${focalY.value}%`;
     cropZoomValue.textContent = `${Number(cropZoom.value).toFixed(2)}×`;
   };
 
@@ -93,6 +124,7 @@
       y: event.clientY,
       cropX: Number(cropX.value),
       cropY: Number(cropY.value),
+      focalX: Number(focalX.value), focalY: Number(focalY.value),
     };
   });
 
@@ -104,8 +136,14 @@
     const rect = cropBox.getBoundingClientRect();
     const sensitivityX = 100 / Math.max(rect.width, 1);
     const sensitivityY = 100 / Math.max(rect.height, 1);
-    cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivityX);
-    cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivityY);
+    if (focusEnabled.checked && preview.naturalWidth) {
+      const scale = Math.max(rect.width / preview.naturalWidth, rect.height / preview.naturalHeight) * Number(cropZoom.value);
+      focalX.value = clamp(dragStart.focalX - (event.clientX - dragStart.x) * 100 / (preview.naturalWidth * scale));
+      focalY.value = clamp(dragStart.focalY - (event.clientY - dragStart.y) * 100 / (preview.naturalHeight * scale));
+    } else {
+      cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivityX);
+      cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivityY);
+    }
     updateCropPreview();
     queueSaveCrop();
   });
@@ -133,11 +171,31 @@
     updateCropPreview();
     queueSaveCrop();
   }));
+  focalSource.addEventListener("click", (event) => {
+    const rect = focalSourceImage.getBoundingClientRect();
+    focalX.value = event.detail === 0 ? 50 : clamp((event.clientX - rect.left) / rect.width * 100);
+    focalY.value = event.detail === 0 ? 50 : clamp((event.clientY - rect.top) / rect.height * 100);
+    focusEnabled.checked = true;
+    updateCropPreview();
+    queueSaveCrop();
+  });
+  [focalX, focalY].forEach((input) => input.addEventListener("input", () => {
+    focusEnabled.checked = true;
+    updateCropPreview();
+    queueSaveCrop();
+  }));
+  focusEnabled.addEventListener("change", () => {
+    updateCropPreview();
+    queueSaveCrop();
+  });
+  document.addEventListener("DOMContentLoaded", updateCropPreview);
   cropForm.addEventListener("submit", () => clearTimeout(saveTimer));
   document.querySelector("#reset-crop").addEventListener("click", () => {
     cropX.value = 50;
     cropY.value = 50;
     cropZoom.value = 1;
+    focusEnabled.checked = false;
+    focalX.value = focalY.value = 50;
     updateCropPreview();
     queueSaveCrop();
   });
