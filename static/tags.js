@@ -61,11 +61,13 @@ document.querySelectorAll(".tag-editor").forEach((editor) => {
   const commit = () => {
     input.value.split(/[,\n]/).forEach(add);
     input.value = "";
+    valueField.form.dispatchEvent(new CustomEvent("editor:changed"));
     closeSuggestions();
   };
   const choose = (tag) => {
     add(tag);
     input.value = "";
+    valueField.form.dispatchEvent(new CustomEvent("editor:changed"));
     input.focus();
     suggest();
   };
