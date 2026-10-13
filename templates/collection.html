@@ -10,7 +10,7 @@
   {% if can_manage %}
     <div class="actions">
       <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id) }}">Edit collection</a>
-      <a class="button" href="{{ url_for('new_item', collection_id=collection.id) }}">New item</a>
+      <a class="button" href="{{ url_for('new_item', collection_id=collection.id, return_to=request.full_path.rstrip('?')) }}">New item</a>
     </div>
   {% endif %}
 </div>
@@ -20,7 +20,7 @@
 {% for field in fields %}
   {% if field_filters.get(field.id) or field_ranges.get(field.id, {}).get('min') or field_ranges.get(field.id, {}).get('max') %}{% set filter_state.active = true %}{% endif %}
 {% endfor %}
-<form class="collection-toolbar" method="get" aria-label="Collection controls">
+<form class="collection-toolbar" data-collection-browser method="get" aria-label="Collection controls">
   <div class="collection-toolbar-main">
   <label class="collection-search">Search items<input type="search" name="q" value="{{ query }}" placeholder="Search names, fields, or tags"></label>
   <label>Sort by<select name="sort">
@@ -110,7 +110,7 @@
 {% if view == 'gallery' %}
   <div class="gallery">
     {% for item in items %}
-      <a class="card image-card" href="{{ url_for('item_detail', item_id=item.id) }}">
+      <a class="card image-card" href="{{ url_for('item_detail', item_id=item.id, return_to=request.full_path.rstrip('?')) }}">
         {% if item.primary_image %}
           <img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="" loading="lazy">
         {% else %}
@@ -134,7 +134,7 @@
       <tbody>
         {% for item in items %}
           <tr>
-            <td class="item-column"><a class="table-item-link" href="{{ url_for('item_detail', item_id=item.id) }}">{% if item.primary_image %}<img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="" loading="lazy">{% endif %}<span>{{ item.name }}</span></a></td>
+            <td class="item-column"><a class="table-item-link" href="{{ url_for('item_detail', item_id=item.id, return_to=request.full_path.rstrip('?')) }}">{% if item.primary_image %}<img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="" loading="lazy">{% endif %}<span>{{ item.name }}</span></a></td>
             <td class="field-column field-value">{{ item.item_uuid }}</td>
             <td class="tags-column">{{ item.tags|join(", ") }}</td>
             {% for field in fields if show_advanced_fields or not field.advanced %}<td class="field-column field-value">{{ item.fields.get(field.name, "")|display_field_value(field.field_type) }}</td>{% endfor %}

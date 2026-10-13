@@ -2,12 +2,12 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <a href="{{ url_for('collection_view', collection_id=collection.id) }}">{{ collection.name }}</a>
+    <a data-collection-back href="{{ return_to }}">{{ collection.name }}</a>
     <h1>{{ item.name }}</h1>
   </div>
   {% if can_manage %}
     <div class="actions">
-      <a class="button" href="{{ url_for('edit_item', item_id=item.id) }}">Edit item</a>
+      <a class="button" href="{{ url_for('edit_item', item_id=item.id, return_to=return_to) }}">Edit item</a>
       <details class="action-menu">
         <summary class="button subtle">More actions</summary>
         <div class="action-menu-content">

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-head">
-  <div><a class="breadcrumb" href="{{ url_for('collection_view', collection_id=collection.id) }}">{{ collection.name }}</a>
+  <div><a class="breadcrumb" data-collection-back href="{{ return_to }}">{{ collection.name }}</a>
   <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
   <p>Describe your item, add its details, and bring it to life with photographs.</p></div>
 </div>
@@ -14,6 +14,7 @@
 {% endif %}
 <form method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form>
   {{ csrf_field()|safe }}
+  <input type="hidden" name="return_to" value="{{ return_to }}">
   <fieldset class="form-section stack">
     <legend>Overview</legend>
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
@@ -87,7 +88,7 @@
   <div class="form-footer editor-save-bar" aria-label="Item actions">
     <span class="meta" data-item-save-status role="status">No unsaved item changes</span>
     <button type="submit">Save item</button>
-    <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id) if item else url_for('collection_view', collection_id=collection.id) }}">Cancel</a>
+    <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id, return_to=return_to) if item else return_to }}">Cancel</a>
   </div>
 </form>
 <script src="{{ url_for('static', filename='tags.js') }}" defer></script>

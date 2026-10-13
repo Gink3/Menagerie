@@ -1260,6 +1260,19 @@ def local_redirect_target(target, fallback):
     return target
 
 
+def collection_return_url(collection_id):
+    """Keep collection browsing context without accepting an external redirect."""
+    fallback = url_for("collection_view", collection_id=collection_id)
+    target = request.form.get("return_to") if request.method == "POST" else request.args.get("return_to")
+    target = target or fallback
+    if not target.startswith("/") or target.startswith("//") or len(target) > 4000 or "\\" in target or any(ord(char) < 32 for char in target):
+        return fallback
+    parsed = urlparse(target)
+    if parsed.path != fallback:
+        return fallback
+    return parsed.path + ("?" + parsed.query if parsed.query else "")
+
+
 def rate_limit(key, limit, window_seconds):
     now = time.time()
     attempts = [timestamp for timestamp in RATE_LIMITS.get(key, []) if now - timestamp < window_seconds]
@@ -2336,10 +2349,11 @@ def new_item(collection):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id))
+        return redirect(url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"])))
     return render_template(
         "item_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         field_suggestions=get_field_suggestions(collection_id),
         item=None,
@@ -2378,6 +2392,7 @@ def item_detail(item_id):
         "item_detail.html",
         item=item,
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         values=values,
         images=images,
@@ -2416,7 +2431,7 @@ def edit_item(item_id):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id))
+        return redirect(url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"])))
     values = {
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))
@@ -2428,6 +2443,7 @@ def edit_item(item_id):
     return render_template(
         "item_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         field_suggestions=get_field_suggestions(item["collection_id"]),
         item=item,
