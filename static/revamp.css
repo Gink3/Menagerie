@@ -321,3 +321,6 @@ img.focal-image { max-width: none; object-fit: fill; position: absolute; }
 .pending-images figcaption { display: grid; gap: 8px; padding: 10px; }
 .pending-images figcaption span { font-size: 12px; overflow-wrap: anywhere; }
 .pending-images button { font-size: 12px; }
+.editor-save-bar [data-item-save-status] { flex: 1 1 180px; font-size: 12px; }
+.has-unsaved-changes [data-item-save-status] { color: var(--accent-dark); }
+@media (max-width: 600px) { .editor-save-bar [data-item-save-status] { flex-basis: 100%; } }

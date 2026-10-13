@@ -12,6 +12,8 @@
     const changed = () => snapshot() !== baseline;
     const update = () => {
       form.classList.toggle("has-unsaved-changes", changed());
+      const status = form.querySelector("[data-item-save-status]");
+      if (status && !form.dataset.saving) status.textContent = changed() ? "Unsaved item details or uploads" : "No unsaved item changes";
       form.dispatchEvent(new CustomEvent("editor:dirty", { detail: { dirty: changed() } }));
     };
     form.addEventListener("input", update);

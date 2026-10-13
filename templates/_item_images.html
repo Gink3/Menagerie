@@ -32,7 +32,7 @@
         <div class="image-placeholder">No images</div>
       {% endfor %}
       {% if images %}
-        <p class="meta" id="gallery-image-status">Saved automatically</p>
+        <p class="meta" id="gallery-image-status" role="status">Photo settings saved</p>
       {% endif %}
     </form>
     </div>
@@ -58,7 +58,7 @@
         selectedImageId.value = "";
         selectedImageStatus.textContent = "Image deleted.";
         renumberGalleryImages();
-        galleryImageStatus.textContent = "Saved automatically";
+        galleryImageStatus.textContent = "Photo settings saved";
         backgroundDelete.closest(".item-image-manager").querySelector(".image-strip").focus();
       } catch {
         selectedImageStatus.textContent = "Could not delete image. Try again.";
@@ -112,14 +112,14 @@
       if (!galleryImageForm) {
         return;
       }
-      galleryImageStatus.textContent = "Saving...";
+      galleryImageStatus.textContent = "Saving photo settings…";
       try {
         const response = await fetch(galleryImageForm.action, {
           method: "POST",
           headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
           body: new FormData(galleryImageForm),
         });
-        galleryImageStatus.textContent = response.ok ? "Saved automatically" : "Could not save. Change a gallery selection to retry.";
+        galleryImageStatus.textContent = response.ok ? "Photo settings saved" : "Could not save. Change a gallery selection to retry.";
       } catch {
         galleryImageStatus.textContent = "Could not save. Change a gallery selection to retry.";
       }

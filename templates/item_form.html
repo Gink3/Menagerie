@@ -8,7 +8,7 @@
 {% if item and images %}
 <section class="panel editor-form edit-photo-panel">
   <h2>Photographs</h2>
-  <p class="meta">Gallery selection, ordering, and deletions save immediately. Frame image opens the image settings in a new tab. Save item below saves your item details.</p>
+  <p class="meta">Photo settings save automatically. Select a photo to manage it. Framing opens in a separate tab.</p>
   {% set editing_item = true %}
   {% include "_item_images.html" %}
 </section>
@@ -86,6 +86,7 @@
     <div class="pending-images" data-upload-previews aria-label="Photographs waiting to upload" hidden></div>
   </fieldset>
   <div class="form-footer editor-save-bar" aria-label="Item actions">
+    <span class="meta" data-item-save-status role="status">No unsaved item changes</span>
     <button type="submit">Save item</button>
     <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id) if item else url_for('collection_view', collection_id=collection.id) }}">Cancel</a>
   </div>
