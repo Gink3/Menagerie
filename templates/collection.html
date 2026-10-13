@@ -90,23 +90,6 @@
 </form>
 
 
-{% if can_manage %}
-  {% set dropdowns = fields|selectattr('field_type', 'equalto', 'dropdown')|list %}
-  {% if dropdowns %}<details class="collection-option-settings"><summary>Manage dropdown options</summary>{% endif %}
-  {% for field in fields if field.field_type == 'dropdown' and (show_advanced_fields or not field.advanced) %}
-    <details class="panel">
-      <summary>{{ field.name }} options</summary>
-      <p>{{ (field|dropdown_options)|join(', ') }}</p>
-      <form method="post" class="toolbar" action="{{ url_for('add_field_option', collection_id=collection.id, field_id=field.id) }}">
-        {{ csrf_field()|safe }}
-        <label>New option<input name="option" required maxlength="200"></label>
-        <button type="submit">Add option</button>
-      </form>
-    </details>
-  {% endfor %}
-  {% if dropdowns %}</details>{% endif %}
-{% endif %}
-
 {% if view == 'gallery' %}
   <div class="gallery">
     {% for item in items %}
