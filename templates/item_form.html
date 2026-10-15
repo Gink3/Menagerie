@@ -1,18 +1,55 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="page-head">
+  <div><a class="breadcrumb" data-collection-back href="{{ return_to }}">{{ collection.name }}</a>
   <h1>{% if item %}Edit{% else %}New{% endif %} item</h1>
+  <p>Describe your item, add its details, and bring it to life with photographs.</p></div>
 </div>
-<form method="post" enctype="multipart/form-data" class="panel stack">
+<section id="photographs" class="panel editor-form edit-photo-panel">
+  <h2>Photographs</h2>
+  {% if item and images %}
+  <p class="meta">Existing photo settings save automatically. Select a photo to manage it. Framing opens in a separate tab.</p>
+  {% include "_item_images.html" %}
+  {% endif %}
+  <div class="stack photo-upload-section" data-image-uploads>
+    <p class="meta form-hint">New photographs upload when you save the item.</p>
+    <label>Add photographs<input form="item-details" name="images" type="file" accept="image/*" multiple></label>
+    <p class="meta" data-upload-status role="status" hidden></p>
+    <div class="pending-images" data-upload-previews aria-label="Photographs waiting to upload" hidden></div>
+  </div>
+</section>
+<form id="item-details" method="post" enctype="multipart/form-data" class="panel stack editor-form" data-dirty-form data-background-save>
   {{ csrf_field()|safe }}
+  <input type="hidden" name="return_to" value="{{ return_to }}">
+  <fieldset class="form-section stack">
+    <legend>Overview</legend>
   <label>Name<input name="name" value="{{ item.name if item else '' }}" required></label>
   <label>Description<textarea name="description" rows="4">{{ item.description if item else '' }}</textarea></label>
-  <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
-  <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
+  <div class="tag-editor" data-known-tags="{{ known_tags|tojson|forceescape }}">
+    <label id="tag-label" for="item-tags">Tags</label>
+    <input id="item-tags" name="tags" value="{{ tags }}" placeholder="e.g. painted, fantasy">
+    <div class="tag-enhanced" hidden>
+      <div class="tag-input-box">
+        <div class="tag-chip-list" role="list" aria-label="Selected tags"></div>
+        <input id="tag-entry" data-dirty-value type="text" role="combobox" aria-labelledby="tag-label" aria-autocomplete="list" aria-controls="tag-suggestions" aria-expanded="false" aria-describedby="tag-help" autocomplete="off" placeholder="Add a tag…">
+      </div>
+      <ul id="tag-suggestions" class="tag-suggestions" role="listbox" aria-label="Known tags" hidden></ul>
+      <span class="sr-only" id="tag-status" aria-live="polite"></span>
+    </div>
+    <p class="meta form-hint" id="tag-help">Type to find a tag. Press Enter or comma to add; use × to remove.</p>
+    <noscript><p class="meta">Separate tags with commas.</p></noscript>
+  </div>
+  </fieldset>
+  {% set editable_fields = namespace(count=0) %}
+  {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}{% set editable_fields.count = editable_fields.count + 1 %}{% endfor %}
+  {% if editable_fields.count %}
+  <fieldset class="form-section">
+    <legend>Collection details</legend>
+    <div class="form-grid">
   {% for field in fields if (show_advanced_fields or not field.advanced) and not field.capture_key %}
     {% set field_value = values.get(field.id, '') if values is defined else '' %}
     {% if field.field_type == "multiline" %}
-      <label>{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
+      <label class="form-wide">{{ field.name }}<textarea name="field_{{ field.id }}" rows="4">{{ field_value }}</textarea></label>
     {% elif field.field_type == "dropdown" %}
       <label>{{ field.name }}<select name="field_{{ field.id }}">
         <option value="">Choose an option</option>
@@ -31,13 +68,28 @@
       {% endif %}
     {% endif %}
   {% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
+  <details class="form-disclosure">
+    <summary>Identification <span class="meta">UUID &amp; RFID</span></summary>
+    <p class="meta">A UUID is generated automatically. Add an RFID tag if you use a capture station.</p>
+    <div class="form-grid">
+  <label>Item UUID<input name="item_uuid" value="{{ item.item_uuid if item else '' }}" placeholder="Generated automatically when empty"></label>
+  <label>RFID UID<input name="rfid_uid" value="{{ item.rfid_uid or '' if item else '' }}" placeholder="Optional; attach or replace a tag here"></label>
+    </div>
+  </details>
   {% if show_advanced_fields and item %}
     <details><summary>Advanced capture settings (recorded automatically)</summary><dl>
     {% for field in fields if field.capture_key %}<dt>{{ field.name }}</dt><dd>{{ values.get(field.id, '') or 'Unknown' }}</dd>{% endfor %}
     </dl></details>
   {% endif %}
-  <label>Tags<input name="tags" value="{{ tags }}" placeholder="comma, separated, tags"></label>
-  <label>Images<input name="images" type="file" accept="image/*" multiple></label>
-  <button type="submit">Save item</button>
 </form>
+  <div class="form-footer editor-save-bar" aria-label="Item actions">
+    <span class="meta" data-item-save-status role="status">No unsaved item changes</span>
+    <button type="submit" form="item-details">Save item</button>
+    <a class="button subtle" href="{{ url_for('item_detail', item_id=item.id, return_to=return_to) if item else return_to }}">Cancel</a>
+  </div>
+<script src="{{ url_for('static', filename='tags.js') }}" defer></script>
+<script src="{{ url_for('static', filename='uploads.js') }}" defer></script>
 {% endblock %}

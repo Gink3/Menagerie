@@ -1,120 +1,57 @@
 {% extends "base.html" %}
 {% block shell_class %}framing-shell{% endblock %}
 {% block content %}
+<header class="framing-titlebar">
+  <a class="breadcrumb" href="{{ url_for('edit_item', item_id=image.item_id, return_to=return_to) + '#photographs' }}">← {{ image.item_name }}</a>
+  <h1>Gallery framing</h1>
+  <p>Choose the detail to keep in view. Your changes save automatically.</p>
+</header>
 <section class="framing-toolbar" aria-label="Gallery framing controls">
   <form id="crop-form" method="post" class="framing-zoom-control">
     {{ csrf_field()|safe }}
+    <input type="hidden" name="return_to" value="{{ return_to }}">
+    <input id="focal-mode" name="focal_mode" type="hidden" value="{{ 'manual' if image.focal_x is not none else 'legacy' }}">
     <input id="crop-x" name="crop_x" type="hidden" value="{{ image.crop_x }}">
     <input id="crop-y" name="crop_y" type="hidden" value="{{ image.crop_y }}">
-    <label for="crop-zoom">Zoom</label>
+<section class="focal-source-panel">
+  <h2>Focal point</h2>
+  <p class="meta">Click the face or detail you want to keep centered.</p>
+  <button class="focal-source" id="focal-source" type="button" aria-label="Choose a focal point in the original photograph">
+    <img id="focal-source-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="Original {{ image.original_name }}">
+    <span class="focal-marker" id="focal-marker" aria-hidden="true" hidden></span>
+  </button>
+</section>
+    <div class="framing-zoom-row"><label for="crop-zoom">Zoom</label>
     <input id="crop-zoom" name="crop_zoom" type="range" min="1" max="3" step="0.05" value="{{ image.crop_zoom }}">
-    <output id="crop-zoom-value" for="crop-zoom">{{ '%.2f'|format(image.crop_zoom) }}×</output>
+    <output id="crop-zoom-value" for="crop-zoom">{{ '%.2f'|format(image.crop_zoom) }}×</output></div>
+    <fieldset class="image-ratio-controls">
+      <legend>Gallery shape</legend>
+      <label>Width<input id="image-ratio-width" name="gallery_ratio_width" type="number" min="1" max="6" step="1" required value="{{ image.gallery_ratio_width }}" aria-describedby="image-ratio-hint"></label>
+      <span aria-hidden="true">×</span>
+      <label>Height<input id="image-ratio-height" name="gallery_ratio_height" type="number" min="1" max="6" step="1" required value="{{ image.gallery_ratio_height }}" aria-describedby="image-ratio-hint"></label>
+    </fieldset>
+    <p class="meta image-ratio-hint" id="image-ratio-hint">Width × height in gallery units, from 1 to 6. Square: 1 × 1.</p>
+    <details class="framing-fine-tune"><summary>Fine-tune focus</summary>
+    <fieldset class="focal-controls">
+      <legend>Focal point</legend>
+      <label class="check-row"><input type="checkbox" id="use-focal-point" {% if image.focal_x is not none %}checked{% endif %}> Center on a chosen detail</label>
+      <label>Horizontal<input id="focal-x" name="focal_x" type="range" min="0" max="100" step="0.1" value="{{ image.focal_x if image.focal_x is not none else 50 }}"></label>
+      <label>Vertical<input id="focal-y" name="focal_y" type="range" min="0" max="100" step="0.1" value="{{ image.focal_y if image.focal_y is not none else 50 }}"></label>
+    </fieldset>
+    </details>
+    <div class="framing-actions">
     <button class="subtle" id="reset-crop" type="button">Reset framing</button>
-    <span class="meta" id="crop-status" aria-live="polite">Saved automatically</span>
-    <button name="return_to_gallery" type="submit" value="1">Save</button>
-  </form>
-  <form method="post" action="{{ url_for('delete_image', image_id=image.id) }}" class="framing-delete-form">
-    {{ csrf_field()|safe }}
-    <button class="danger" type="submit">Delete image</button>
+    <button name="finish_framing" type="submit" value="1">Done</button>
+    </div>
+    <div class="save-feedback"><span class="meta" id="crop-status" role="status" aria-live="polite">Framing saved</span><button class="subtle" type="button" id="retry-framing" hidden>Retry</button></div>
   </form>
 </section>
-<header class="framing-titlebar">
-  <a href="{{ url_for('item_detail', item_id=image.item_id) }}">{{ image.item_name }}</a>
-  <h1>Gallery framing</h1>
-  <p>Drag to pan · Scroll to zoom · Changes save automatically</p>
-</header>
 <section class="framing-canvas">
-  <div class="crop-preview" id="crop-preview" aria-label="Gallery crop preview">
-    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+  <div class="framing-preview-heading"><h2>Gallery preview</h2><p class="meta">Drag to reposition · Scroll to zoom</p></div>
+  <div class="crop-preview" id="crop-preview" style="--crop-ratio: {{ image.gallery_ratio_width / image.gallery_ratio_height }}" aria-label="Gallery crop preview">
+    <img id="crop-preview-image" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" draggable="false" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
   </div>
 </section>
-<script>
-  const cropBox = document.querySelector("#crop-preview");
-  const cropForm = document.querySelector("#crop-form");
-  const preview = document.querySelector("#crop-preview-image");
-  const cropX = document.querySelector("#crop-x");
-  const cropY = document.querySelector("#crop-y");
-  const cropZoom = document.querySelector("#crop-zoom");
-  const cropStatus = document.querySelector("#crop-status");
-  const cropZoomValue = document.querySelector("#crop-zoom-value");
-  let dragStart = null;
-  let saveTimer = null;
 
-  const updateCropPreview = () => {
-    preview.style.objectPosition = `${cropX.value}% ${cropY.value}%`;
-    preview.style.transformOrigin = `${cropX.value}% ${cropY.value}%`;
-    preview.style.transform = `scale(${cropZoom.value})`;
-    cropZoomValue.textContent = `${Number(cropZoom.value).toFixed(2)}×`;
-  };
-
-  const clamp = (value) => Math.max(0, Math.min(100, value));
-  const clampZoom = (value) => Math.max(1, Math.min(3, value));
-
-  const saveCrop = async () => {
-    cropStatus.textContent = "Saving...";
-    const response = await fetch(cropForm.action || window.location.href, {
-      method: "POST",
-      headers: { "X-Requested-With": "fetch", "X-CSRFToken": "{{ csrf_token() }}" },
-      body: new FormData(cropForm),
-    });
-    cropStatus.textContent = response.ok ? "Saved automatically" : "Could not save";
-  };
-
-  const queueSaveCrop = () => {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(saveCrop, 250);
-  };
-
-  cropBox.addEventListener("pointerdown", (event) => {
-    event.preventDefault();
-    cropBox.setPointerCapture(event.pointerId);
-    dragStart = {
-      x: event.clientX,
-      y: event.clientY,
-      cropX: Number(cropX.value),
-      cropY: Number(cropY.value),
-    };
-  });
-
-  cropBox.addEventListener("pointermove", (event) => {
-    if (!dragStart) {
-      return;
-    }
-    event.preventDefault();
-    const rect = cropBox.getBoundingClientRect();
-    const sensitivityX = 100 / Math.max(rect.width, 1);
-    const sensitivityY = 100 / Math.max(rect.height, 1);
-    cropX.value = clamp(dragStart.cropX - (event.clientX - dragStart.x) * sensitivityX);
-    cropY.value = clamp(dragStart.cropY - (event.clientY - dragStart.y) * sensitivityY);
-    updateCropPreview();
-    queueSaveCrop();
-  });
-
-  cropBox.addEventListener("pointerup", (event) => {
-    dragStart = null;
-    if (cropBox.hasPointerCapture(event.pointerId)) {
-      cropBox.releasePointerCapture(event.pointerId);
-    }
-  });
-  cropBox.addEventListener("pointercancel", () => { dragStart = null; });
-  cropBox.addEventListener("wheel", (event) => {
-    event.preventDefault();
-    const nextZoom = clampZoom(Number(cropZoom.value) + (event.deltaY < 0 ? 0.05 : -0.05));
-    cropZoom.value = nextZoom.toFixed(2);
-    updateCropPreview();
-    queueSaveCrop();
-  });
-  preview.addEventListener("dragstart", (event) => { event.preventDefault(); });
-  cropZoom.addEventListener("input", () => {
-    updateCropPreview();
-    queueSaveCrop();
-  });
-  document.querySelector("#reset-crop").addEventListener("click", () => {
-    cropX.value = 50;
-    cropY.value = 50;
-    cropZoom.value = 1;
-    updateCropPreview();
-    queueSaveCrop();
-  });
-</script>
+<script src="{{ url_for('static', filename='image-crop.js') }}" defer></script>
 {% endblock %}

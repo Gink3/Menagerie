@@ -7,30 +7,68 @@
   <title>Menagerie</title>
   <link rel="icon" type="image/png" href="{{ url_for('asset_file', filename='Menagerie_Logo_Small.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='revamp.css') }}">
+  <script src="{{ url_for('static', filename='framing.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='feedback.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='editor.js') }}" defer></script>
+  <script src="{{ url_for('static', filename='browse-context.js') }}" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Skip to content</a>
-  <header class="topbar">
-    <a class="brand" href="{{ url_for('index') }}" aria-label="Menagerie home">
-      <img class="brand-logo" src="{{ url_for('asset_file', filename='Menagerie_Logo_Small.png') }}" alt="" width="40" height="40">
-      <span>Menagerie</span>
-    </a>
-    <nav aria-label="Main navigation">
-      <details class="nav-group"><summary>Galleries</summary><div class="nav-menu"><a href="{{ url_for('index') }}">Gallery</a><a href="{{ url_for('user_galleries') }}">User Galleries</a>{% if g.user %}<a href="{{ url_for('my_gallery') }}">My Gallery</a>{% endif %}</div></details>
-      {% if g.user %}<details class="nav-group"><summary>Collections</summary><div class="nav-menu"><a href="{{ url_for('collections_index') }}">My Collections</a><a href="{{ url_for('decal_templates_index') }}">Template Library</a><a href="{{ url_for('heraldry_index') }}">Decal Library</a></div></details><a class="topnav-link" href="{{ url_for('wiki_index') }}">Wiki</a>{% endif %}
-    </nav>
-    <details class="nav-group app-menu">
-      <summary aria-label="Open settings and account menu"><span aria-hidden="true">☰</span><span class="menu-label">Menu</span></summary>
-      <div class="nav-menu">
+  {% macro nav_link(endpoint, label, active=false) %}
+    <a href="{{ url_for(endpoint) }}" {% if active %}aria-current="page"{% endif %}>{{ label }}</a>
+  {% endmacro %}
+  {% set endpoint = request.endpoint or '' %}
+  <aside class="app-sidebar" aria-label="Menagerie navigation">
+    <div class="sidebar-brand">
+      <a class="brand" href="{{ url_for('index') }}" aria-label="Menagerie home">
+        <img class="brand-logo" src="{{ url_for('asset_file', filename='Menagerie_Logo_Small.png') }}" alt="" width="36" height="36">
+        <span>Menagerie</span>
+      </a>
+      <button class="subtle sidebar-toggle" type="button" aria-controls="sidebar-content" aria-expanded="true">Browse</button>
+    </div>
+    <div id="sidebar-content" class="sidebar-content">
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        <div class="sidebar-section">
+          <span class="sidebar-label">Explore</span>
+          {{ nav_link('index', 'Gallery', endpoint == 'index') }}
+          {{ nav_link('user_galleries', 'User galleries', endpoint in ('user_galleries', 'user_gallery')) }}
+          {% if g.user %}{{ nav_link('my_gallery', 'My gallery', endpoint in ('my_gallery', 'save_gallery_layout')) }}{% endif %}
+        </div>
         {% if g.user %}
-          <a href="{{ url_for('user_settings') }}">Settings</a>
-          <a href="{{ advanced_toggle_url }}">{{ "Hide advanced fields" if show_advanced_fields else "Show advanced fields" }}</a>
-          {% if has_capability(g.user, 'label_images') or has_capability(g.user, 'admin_ai') or g.user.role == 'admin' %}<details class="menu-section"><summary>AI Settings</summary><div>{% if has_capability(g.user, 'label_images') %}<a href="{{ url_for('my_gallery') }}">Annotate</a>{% endif %}{% if has_capability(g.user, 'admin_ai') %}<a href="{{ url_for('ai_lab') }}">AI Lab</a>{% endif %}{% if g.user.role == 'admin' %}<a href="{{ url_for('metrics_dashboard') }}">Metrics</a><a href="{{ url_for('admin_users') }}">Administration</a>{% endif %}</div></details>{% endif %}
+        <div class="sidebar-section">
+          <span class="sidebar-label">Workspace</span>
+          {{ nav_link('collections_index', 'My collections', endpoint in ('collections_index', 'collection_view', 'new_collection', 'edit_collection', 'item_detail', 'new_item', 'edit_item')) }}
+          {{ nav_link('decal_templates_index', 'Template library', endpoint.startswith('decal_template') or endpoint == 'decal_from_template') }}
+          {{ nav_link('heraldry_index', 'Decal library', endpoint.startswith('heraldry')) }}
+          {{ nav_link('wiki_index', 'Wiki', endpoint.startswith('wiki')) }}
+        </div>
+        {% if has_capability(g.user, 'label_images') or has_capability(g.user, 'admin_ai') or g.user.role == 'admin' %}
+        <div class="sidebar-section">
+          <span class="sidebar-label">Tools</span>
+          {% if has_capability(g.user, 'label_images') %}{{ nav_link('my_gallery', 'Annotate') }}{% endif %}
+          {% if has_capability(g.user, 'admin_ai') %}{{ nav_link('ai_lab', 'AI lab', endpoint == 'ai_lab') }}{% endif %}
+          {% if g.user.role == 'admin' %}
+            {{ nav_link('metrics_dashboard', 'Metrics', endpoint == 'metrics_dashboard') }}
+            {{ nav_link('admin_users', 'Administration', endpoint.startswith('admin_')) }}
+          {% endif %}
+        </div>
         {% endif %}
-        {% if g.user %}<form action="{{ url_for('logout') }}" method="post">{{ csrf_field()|safe }}<button class="link-button" type="submit">Log out</button></form>{% else %}<a class="button" href="{{ url_for('login') }}">Log in</a>{% endif %}
+        {% endif %}
+      </nav>
+      <div class="sidebar-account">
+        {% if g.user %}
+          <div class="account-identity"><strong>{{ g.user.username }}</strong><span class="meta">{{ g.user.role|capitalize }}</span></div>
+          {{ nav_link('user_settings', 'Settings', endpoint in ('user_settings', 'create_account', 'api_keys.settings')) }}
+          <a href="{{ advanced_toggle_url }}">{{ "Hide advanced fields" if show_advanced_fields else "Show advanced fields" }}</a>
+          <form action="{{ url_for('logout') }}" method="post">{{ csrf_field()|safe }}<button class="link-button" type="submit">Log out</button></form>
+        {% else %}
+          <p class="meta">Your objects. Their stories.</p>
+          <a class="button" href="{{ url_for('login') }}">Log in</a>
+        {% endif %}
       </div>
-    </details>
-  </header>
+    </div>
+  </aside>
   <main id="main-content" class="shell {% block shell_class %}{% endblock %}">
     {% for category, message in get_flashed_messages(with_categories=true) %}
       <div class="flash {{ category }}" role="status">{{ message }}</div>
@@ -38,10 +76,23 @@
     {% block content %}{% endblock %}
   </main>
   <script>
-    document.querySelectorAll(".nav-group").forEach((group) => {
-      group.addEventListener("toggle", () => {
-        if (group.open) document.querySelectorAll(".nav-group").forEach((other) => { if (other !== group) other.open = false; });
-      });
+    const sidebar = document.querySelector(".app-sidebar");
+    const sidebarToggle = document.querySelector(".sidebar-toggle");
+    const smallScreen = window.matchMedia("(max-width: 900px)");
+    const setNavigation = (expanded) => {
+      sidebar.classList.toggle("nav-collapsed", !expanded);
+      sidebarToggle.setAttribute("aria-expanded", String(expanded));
+    };
+    setNavigation(!smallScreen.matches);
+    smallScreen.addEventListener("change", () => setNavigation(!smallScreen.matches));
+    sidebarToggle.addEventListener("click", () => {
+      setNavigation(sidebarToggle.getAttribute("aria-expanded") !== "true");
+    });
+    sidebar.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && smallScreen.matches) {
+        setNavigation(false);
+        sidebarToggle.focus();
+      }
     });
   </script>
 </body>

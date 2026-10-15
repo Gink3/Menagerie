@@ -9,32 +9,47 @@
   </div>
   {% if can_manage %}
     <div class="actions">
-      <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id) }}">Edit collection</a>
-      <a class="button" href="{{ url_for('new_item', collection_id=collection.id) }}">New item</a>
+      <a class="button subtle" href="{{ url_for('edit_collection', collection_id=collection.id, return_to=request.full_path.rstrip('?')) }}">Edit collection</a>
+      <a class="button" href="{{ url_for('new_item', collection_id=collection.id, return_to=request.full_path.rstrip('?')) }}">New item</a>
     </div>
   {% endif %}
 </div>
 
-<form class="toolbar" method="get">
-  <input name="q" value="{{ query }}" placeholder="Filter items">
-  <input name="tag" value="{{ tag }}" placeholder="Tag">
-  <select name="sort">
+{% set filter_state = namespace(active=false) %}
+{% if tag or image_status or gallery_status %}{% set filter_state.active = true %}{% endif %}
+{% for field in fields %}
+  {% if field_filters.get(field.id) or field_ranges.get(field.id, {}).get('min') or field_ranges.get(field.id, {}).get('max') %}{% set filter_state.active = true %}{% endif %}
+{% endfor %}
+<form class="collection-toolbar" data-collection-browser method="get" aria-label="Collection controls">
+  <div class="collection-toolbar-main">
+  <label class="collection-search">Search items<input type="search" name="q" value="{{ query }}" placeholder="Search names, fields, or tags"></label>
+  <label>Sort by<select name="sort">
     <option value="name" {% if sort == 'name' %}selected{% endif %}>Name</option>
     <option value="item_uuid" {% if sort == 'item_uuid' %}selected{% endif %}>UUID</option>
     <option value="created_at" {% if sort == 'created_at' %}selected{% endif %}>Created</option>
     {% for field in fields if show_advanced_fields or not field.advanced %}
       <option value="{{ field.name }}" {% if sort == field.name %}selected{% endif %}>{{ field.name }}</option>
     {% endfor %}
+  </select></label>
+  <label>Order<select name="dir">
+    <option value="asc" {% if direction == 'asc' %}selected{% endif %}>Ascending</option>
+    <option value="desc" {% if direction == 'desc' %}selected{% endif %}>Descending</option>
   </select>
-  <select name="dir">
-    <option value="asc" {% if direction == 'asc' %}selected{% endif %}>Asc</option>
-    <option value="desc" {% if direction == 'desc' %}selected{% endif %}>Desc</option>
-  </select>
-  <input type="hidden" name="view" value="{{ view }}">
-  <button type="submit">Apply</button>
-  <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='table') }}">Table</a>
-  <a class="button subtle" href="{{ url_for('collection_view', collection_id=collection.id, view='gallery') }}">Gallery</a>
-  <div class="advanced-filters panel">
+  </label>
+  <button type="submit" name="view" value="{{ view }}">Apply</button>
+  <div class="view-switch" role="group" aria-label="Collection view">
+    <button type="submit" name="view" value="table" aria-pressed="{{ 'true' if view != 'gallery' else 'false' }}">Table</button>
+    <button type="submit" name="view" value="gallery" aria-pressed="{{ 'true' if view == 'gallery' else 'false' }}">Gallery</button>
+  </div>
+  </div>
+  <div class="collection-toolbar-footer">
+    <span class="meta" role="status">{{ items|length }} {{ 'item' if items|length == 1 else 'items' }}{% if query or filter_state.active %} matching your search{% endif %}</span>
+    {% if query or filter_state.active %}<a href="{{ url_for('collection_view', collection_id=collection.id, view=view, sort=sort, dir=direction) }}">Clear filters</a>{% endif %}
+  </div>
+  <details class="filter-disclosure" {% if filter_state.active %}open{% endif %}>
+    <summary>Filters{% if filter_state.active %} · Active{% endif %}</summary>
+    <div class="advanced-filters">
+    <label>Tag<input name="tag" value="{{ tag }}" placeholder="e.g. painted"></label>
     <label>Images
       <select name="image_status">
         <option value="" {% if not image_status %}selected{% endif %}>Any</option>
@@ -70,30 +85,17 @@
         <label>{{ field.name }}<input name="field_{{ field.id }}" value="{{ field_filters.get(field.id, '') }}"></label>
       {% endif %}
     {% endfor %}
-  </div>
+    </div>
+  </details>
 </form>
 
-
-{% if can_manage %}
-  {% for field in fields if field.field_type == 'dropdown' and (show_advanced_fields or not field.advanced) %}
-    <details class="panel">
-      <summary>{{ field.name }} options</summary>
-      <p>{{ (field|dropdown_options)|join(', ') }}</p>
-      <form method="post" class="toolbar" action="{{ url_for('add_field_option', collection_id=collection.id, field_id=field.id) }}">
-        {{ csrf_field()|safe }}
-        <label>New option<input name="option" required maxlength="200"></label>
-        <button type="submit">Add option</button>
-      </form>
-    </details>
-  {% endfor %}
-{% endif %}
 
 {% if view == 'gallery' %}
   <div class="gallery">
     {% for item in items %}
-      <a class="card image-card" href="{{ url_for('item_detail', item_id=item.id) }}">
+      <a class="card image-card" href="{{ url_for('item_detail', item_id=item.id, return_to=request.full_path.rstrip('?')) }}">
         {% if item.primary_image %}
-          <img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="">
+          <img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="" loading="lazy">
         {% else %}
           <div class="image-placeholder">No image</div>
         {% endif %}
@@ -115,7 +117,7 @@
       <tbody>
         {% for item in items %}
           <tr>
-            <td class="item-column"><a href="{{ url_for('item_detail', item_id=item.id) }}">{{ item.name }}</a></td>
+            <td class="item-column"><a class="table-item-link" href="{{ url_for('item_detail', item_id=item.id, return_to=request.full_path.rstrip('?')) }}">{% if item.primary_image %}<img src="{{ url_for('uploaded_file', filename=item.primary_image) }}" alt="" loading="lazy">{% endif %}<span>{{ item.name }}</span></a></td>
             <td class="field-column field-value">{{ item.item_uuid }}</td>
             <td class="tags-column">{{ item.tags|join(", ") }}</td>
             {% for field in fields if show_advanced_fields or not field.advanced %}<td class="field-column field-value">{{ item.fields.get(field.name, "")|display_field_value(field.field_type) }}</td>{% endfor %}

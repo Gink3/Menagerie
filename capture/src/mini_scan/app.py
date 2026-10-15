@@ -1452,6 +1452,17 @@ class ImageEditor:
             self.window,
             text="Drag a rectangle to crop. Resize dimensions apply after cropping.",
         ).pack()
+        crop_tools = row(self.window)
+        button(crop_tools, "Auto crop · plain background", self.auto_crop)
+        ttk.Label(crop_tools, text="Tolerance").pack(side="left", padx=(12, 4))
+        self.background_tolerance = tk.StringVar(value="30")
+        ttk.Spinbox(crop_tools, from_=5, to=80, width=4, textvariable=self.background_tolerance).pack(side="left")
+        ttk.Label(crop_tools, text="Padding %").pack(side="left", padx=(12, 4))
+        self.crop_padding = tk.StringVar(value="10")
+        ttk.Spinbox(crop_tools, from_=0, to=50, width=4, textvariable=self.crop_padding).pack(side="left")
+        button(crop_tools, "Reset crop", self.reset_crop)
+        self.crop_message = tk.StringVar(value="Auto crop suggests a rectangle. Review it, then choose Apply.")
+        ttk.Label(self.window, textvariable=self.crop_message, wraplength=900).pack()
         self.box = (0, 0, self.image.width, self.image.height)
         self.rectangle = None
         self.width = field(self.window, "Output width", self.image.width)
@@ -1475,6 +1486,33 @@ class ImageEditor:
         actions = row(self.window)
         button(actions, "Apply", self.apply)
         button(actions, "Cancel", self.window.destroy)
+
+    def set_crop(self, box):
+        self.box = box
+        if self.rectangle:
+            self.canvas.delete(self.rectangle)
+        sx = self.photo.width() / self.image.width
+        sy = self.photo.height() / self.image.height
+        self.rectangle = self.canvas.create_rectangle(
+            box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy,
+            outline=ACCENT, width=2)
+        self.width.set(box[2] - box[0])
+        self.height.set(box[3] - box[1])
+
+    def auto_crop(self):
+        from .editing import plain_background_crop
+        try:
+            box = plain_background_crop(self.image, float(self.background_tolerance.get()),
+                                        float(self.crop_padding.get()) / 100)
+        except ValueError as error:
+            self.crop_message.set(str(error))
+            return
+        self.set_crop(box)
+        self.crop_message.set("Suggested crop ready. Check the base and thin details; drag to adjust, or choose Apply.")
+
+    def reset_crop(self):
+        self.set_crop((0, 0, self.image.width, self.image.height))
+        self.crop_message.set("Full photo selected. No crop has been applied.")
 
     def render(self, value=None):
         from .editing import adjust

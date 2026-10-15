@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<div class="settings-page">
 <div class="page-head">
   <div>
     <h1>Settings</h1>
@@ -19,6 +20,7 @@
 <form method="post" class="panel stack">
   {{ csrf_field()|safe }}
   <input name="action" type="hidden" value="theme">
+  <div><h2>Appearance</h2><p class="meta">Choose the Menagerie theme that suits your workspace.</p></div>
   <label>Theme
     <select name="theme">
       {% for value, label in theme_choices.items() %}<option value="{{ value }}" {% if value == selected_theme %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -29,9 +31,11 @@
 <form method="post" class="panel stack">
   {{ csrf_field()|safe }}
   <input name="action" type="hidden" value="password">
+  <div><h2>Password</h2><p class="meta">Update the password you use to sign in.</p></div>
   <label>Current password<input name="current_password" type="password" autocomplete="current-password" required></label>
   <label>New password<input name="new_password" type="password" autocomplete="new-password" minlength="8" required></label>
   <label>Confirm new password<input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></label>
   <button type="submit">Change password</button>
 </form>
+</div>
 {% endblock %}

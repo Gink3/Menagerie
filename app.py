@@ -1031,6 +1031,10 @@ def init_db():
         "crop_x": "real not null default 50",
         "crop_y": "real not null default 50",
         "crop_zoom": "real not null default 1",
+        "focal_x": "real",
+        "focal_y": "real",
+        "gallery_ratio_width": "integer not null default 1",
+        "gallery_ratio_height": "integer not null default 1",
     }
     for column, definition in image_defaults.items():
         if column not in image_columns:
@@ -1256,6 +1260,19 @@ def local_redirect_target(target, fallback):
     return target
 
 
+def collection_return_url(collection_id):
+    """Keep collection browsing context without accepting an external redirect."""
+    fallback = url_for("collection_view", collection_id=collection_id)
+    target = request.form.get("return_to") if request.method == "POST" else request.args.get("return_to")
+    target = target or fallback
+    if not target.startswith("/") or target.startswith("//") or len(target) > 4000 or "\\" in target or any(ord(char) < 32 for char in target):
+        return fallback
+    parsed = urlparse(target)
+    if parsed.path != fallback:
+        return fallback
+    return parsed.path + ("?" + parsed.query if parsed.query else "")
+
+
 def rate_limit(key, limit, window_seconds):
     now = time.time()
     attempts = [timestamp for timestamp in RATE_LIMITS.get(key, []) if now - timestamp < window_seconds]
@@ -1445,7 +1462,12 @@ def gallery_images(owner_id=None, mixed=False):
     item_lookup = {}
     for row in rows:
         item_id = row["item_id"]
-        if item_id not in item_lookup:
+        # One tile per item. The random gallery uses its first enabled image;
+        # personal galleries keep the remaining images as slideshow frames.
+        tile_key = item_id
+        if mixed and tile_key in item_lookup:
+            continue
+        if tile_key not in item_lookup:
             item = {
                 "id": item_id,
                 "name": row["item_name"],
@@ -1457,24 +1479,16 @@ def gallery_images(owner_id=None, mixed=False):
                 "gallery_y": row["item_gallery_y"],
                 "gallery_w": row["item_gallery_w"],
                 "gallery_h": row["item_gallery_h"],
+                "gallery_ratio_width": row["gallery_ratio_width"],
+                "gallery_ratio_height": row["gallery_ratio_height"],
                 "images": [],
             }
-            item_lookup[item_id] = item
+            item_lookup[tile_key] = item
             gallery_items.append(item)
-        item_lookup[item_id]["images"].append(row)
+        item_lookup[tile_key]["images"].append(row)
     if mixed:
-        # The public gallery is a fresh mixed exhibition on every visit; personal
-        # gallery layouts remain saved and editable. Shuffle after grouping the
-        # image rows, so every item has an equal chance of appearing first.
         random.shuffle(gallery_items)
-        settings = {row["key"]: row["value"] for row in get_db().execute(
-            "select key, value from settings where key in ('gallery_ratio_width', 'gallery_ratio_height')"
-        )}
-        return random_gallery_layout(
-            gallery_items,
-            ratio_width=int(settings.get("gallery_ratio_width", "1")),
-            ratio_height=int(settings.get("gallery_ratio_height", "1")),
-        )
+        return random_gallery_layout(gallery_items)
     return normalize_gallery_layout(gallery_items)
 
 
@@ -1513,20 +1527,23 @@ def normalize_gallery_layout(items):
     return normalized
 
 
-def random_gallery_layout(items, columns=6, ratio_width=1, ratio_height=1):
-    """Randomize tile scale while preserving the configured ratio in grid units."""
+def random_gallery_layout(items, columns=6):
+    """Randomize scale while preserving each photograph's ratio in grid units."""
     from math import gcd
 
-    if not 1 <= ratio_width <= 6 or not 1 <= ratio_height <= 6:
-        raise ValueError("Gallery ratio must use whole numbers from 1 to 6.")
-    divisor = gcd(ratio_width, ratio_height)
-    unit_width, unit_height = ratio_width // divisor, ratio_height // divisor
-    max_scale = min(columns // unit_width, 6 // unit_height, 3)
-    if max_scale < 1 or min(unit_width, unit_height) < 1:
-        raise ValueError("Gallery ratio must fit within six grid units.")
     layout = []
     occupied = set()
     for item in items:
+        tile = row_to_dict(item)
+        ratio_width = tile.get("gallery_ratio_width", 1)
+        ratio_height = tile.get("gallery_ratio_height", 1)
+        if not 1 <= ratio_width <= 6 or not 1 <= ratio_height <= 6:
+            raise ValueError("Gallery ratio must use whole numbers from 1 to 6.")
+        divisor = gcd(ratio_width, ratio_height)
+        unit_width, unit_height = ratio_width // divisor, ratio_height // divisor
+        max_scale = min(columns // unit_width, 6 // unit_height, 3)
+        if max_scale < 1:
+            raise ValueError("Gallery ratio must fit within six grid units.")
         scale = random.choice(range(1, max_scale + 1))
         width, height = unit_width * scale, unit_height * scale
         x = y = 0
@@ -1536,7 +1553,6 @@ def random_gallery_layout(items, columns=6, ratio_width=1, ratio_height=1):
                 x = 0
                 y += 1
         occupy_gallery_slot(occupied, x, y, width, height)
-        tile = row_to_dict(item)
         tile.update(gallery_x=x, gallery_y=y, gallery_w=width, gallery_h=height)
         layout.append(tile)
     return layout
@@ -1717,6 +1733,17 @@ def replace_item_tags(item_id, tags):
         db.execute("insert into item_tags (item_id, tag_id) values (?, ?)", (item_id, tag_id))
 
 
+def get_known_tags(owner_id):
+    """Suggest tags used in this collector's collections without exposing others."""
+    return [row["name"] for row in get_db().execute(
+        """select distinct tags.name from tags
+        join item_tags on item_tags.tag_id = tags.id
+        join items on items.id = item_tags.item_id
+        join collections on collections.id = items.collection_id
+        where collections.owner_id = ? order by tags.name""", (owner_id,)
+    )]
+
+
 def get_item_tags(item_id):
     return [
         row["name"]
@@ -1826,7 +1853,12 @@ def index():
 def collections_index():
     collections = get_db().execute(
         """
-        select collections.*, users.username as owner_username
+        select collections.*, users.username as owner_username,
+            (select count(*) from items where items.collection_id = collections.id) as item_count,
+            (select item_images.filename from item_images
+             join items on items.id = item_images.item_id
+             where items.collection_id = collections.id
+             order by items.name, item_images.position, item_images.id limit 1) as preview_filename
         from collections
         left join users on users.id = collections.owner_id
         where collections.owner_id = ?
@@ -1968,18 +2000,49 @@ def image_settings(image_id):
         crop_x = max(0, min(100, float(request.form.get("crop_x", image["crop_x"]))))
         crop_y = max(0, min(100, float(request.form.get("crop_y", image["crop_y"]))))
         crop_zoom = max(1, min(3, float(request.form.get("crop_zoom", image["crop_zoom"]))))
+        ratios = []
+        for key in ("gallery_ratio_width", "gallery_ratio_height"):
+            try:
+                value = int(request.form.get(key, image[key]))
+            except ValueError:
+                abort(400, description="Image aspect ratio must use whole numbers from 1 to 6.")
+            if not 1 <= value <= 6:
+                abort(400, description="Image aspect ratio must use whole numbers from 1 to 6.")
+            ratios.append(value)
+        focal_x, focal_y = image["focal_x"], image["focal_y"]
+        if request.form.get("focal_mode") == "manual":
+            import math
+            try:
+                focal_x = float(request.form["focal_x"])
+                focal_y = float(request.form["focal_y"])
+            except (KeyError, ValueError):
+                abort(400, description="Choose a focal point within the image.")
+            if not all(math.isfinite(value) and 0 <= value <= 100 for value in (focal_x, focal_y)):
+                abort(400, description="Focal point coordinates must be between 0 and 100.")
+        elif request.form.get("focal_mode") == "legacy":
+            focal_x = focal_y = None
+        elif "focal_mode" in request.form:
+            abort(400, description="Choose a valid focal point mode.")
         get_db().execute(
-            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ? where id = ?",
-            (crop_x, crop_y, crop_zoom, image["id"]),
+            "update item_images set crop_x = ?, crop_y = ?, crop_zoom = ?, "
+            "gallery_ratio_width = ?, gallery_ratio_height = ?, focal_x = ?, focal_y = ? where id = ?",
+            (crop_x, crop_y, crop_zoom, *ratios, focal_x, focal_y, image["id"]),
         )
         get_db().commit()
+        next_url = url_for("edit_item", item_id=image["item_id"], return_to=collection_return_url(image["collection_id"])) + "#photographs"
         if is_background_request():
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "next": next_url})
         flash("Image settings saved.", "success")
+        if request.form.get("finish_framing"):
+            return redirect(next_url)
         if request.form.get("return_to_gallery"):
             return redirect(url_for("my_gallery"))
         return redirect(url_for("item_detail", item_id=image["item_id"]))
-    return render_template("image_crop.html", image=image)
+    if is_background_request():
+        return jsonify({key: image[key] for key in (
+            "crop_x", "crop_y", "crop_zoom", "gallery_ratio_width", "gallery_ratio_height", "focal_x", "focal_y"
+        )})
+    return render_template("image_crop.html", image=image, return_to=collection_return_url(image["collection_id"]))
 
 
 @app.route("/images/<int:image_id>/delete", methods=("POST",))
@@ -2022,6 +2085,8 @@ def delete_selected_item_image(item_id):
         (UPLOAD_DIR / image["filename"]).unlink()
     except FileNotFoundError:
         pass
+    if is_background_request():
+        return jsonify({"ok": True})
     flash("Image deleted.", "success")
     return redirect(url_for("item_detail", item_id=item_id))
 
@@ -2136,6 +2201,25 @@ def edit_collection(collection):
         "select id, username from users where role in ('admin', 'collector') order by username"
     ).fetchall()
     if request.method == "POST":
+        existing_fields = {field["id"]: field for field in get_fields(collection["id"])}
+        try:
+            deleted_fields = {int(value) for value in request.form.getlist("delete_field_ids")}
+            positions = {field_id: int(request.form[f"field_position_{field_id}"])
+                         for field_id in existing_fields if f"field_position_{field_id}" in request.form}
+        except (TypeError, ValueError):
+            abort(400, description="Choose valid field positions and removals.")
+        if (deleted_fields or positions) and g.user["role"] != "admin":
+            abort(403)
+        if not deleted_fields <= existing_fields.keys() or any(value < 0 for value in positions.values()):
+            abort(400, description="Choose fields and positions from this collection.")
+        try:
+            field_specs = [(int(field_id) if field_id else None, name, kind, options)
+                           for field_id, name, kind, options in dropdown_fields.specs(sys.modules[__name__], request.form)]
+        except (TypeError, ValueError):
+            abort(400, description="Choose valid collection fields.")
+        if any(field_id and (field_id not in existing_fields or field_id in deleted_fields)
+               for field_id, _, _, _ in field_specs):
+            abort(400, description="Choose fields from this collection.")
         owner_id = collection["owner_id"]
         if g.user["role"] == "admin":
             owner_id = valid_collection_owner_id(request.form.get("owner_id"), collection["owner_id"] or g.user["id"])
@@ -2152,11 +2236,11 @@ def edit_collection(collection):
             "select coalesce(max(position), -1) + 1 from fields where collection_id = ?",
             (collection["id"],),
         ).fetchone()[0]
-        for field_id, field_name, field_type, options_json in dropdown_fields.specs(sys.modules[__name__], request.form):
+        for field_id, field_name, field_type, options_json in field_specs:
             if field_id:
                 db.execute(
-                    "update fields set name = ?, field_type = ?, options_json = ? where id = ? and collection_id = ?",
-                    (field_name, field_type, options_json, field_id, collection["id"]),
+                    "update fields set name = ?, field_type = ?, options_json = ?, position = ? where id = ? and collection_id = ?",
+                    (field_name, field_type, options_json, positions.get(field_id, existing_fields[field_id]["position"]), field_id, collection["id"]),
                 )
             else:
                 db.execute(
@@ -2164,12 +2248,16 @@ def edit_collection(collection):
                     (collection["id"], field_name, field_type, next_position, options_json),
                 )
                 next_position += 1
+        for field_id in deleted_fields:
+            db.execute("delete from item_values where field_id = ?", (field_id,))
+            db.execute("delete from fields where id = ?", (field_id,))
         db.commit()
         flash("Collection saved.", "success")
-        return redirect(url_for("collection_view", collection_id=collection["id"]))
+        return redirect(collection_return_url(collection["id"]))
     return render_template(
         "collection_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         collectors=collectors,
         fields=get_fields(collection["id"]),
         field_type_choices=FIELD_TYPE_CHOICES,
@@ -2273,6 +2361,10 @@ def new_item(collection):
     collection_id = collection["id"]
     fields = get_fields(collection_id)
     if request.method == "POST":
+        if not request.form.get("name", "").strip():
+            if is_background_request():
+                return jsonify({"ok": False, "error": "Enter an item name."}), 400
+            abort(400, description="Enter an item name.")
         db = get_db()
         cursor = db.execute(
             "insert into items (collection_id, name, description, item_uuid, rfid_uid) values (?, ?, ?, ?, ?)",
@@ -2287,14 +2379,20 @@ def new_item(collection):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id))
+        next_url = url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"]))
+        flash("Item saved.", "success")
+        if is_background_request():
+            return jsonify({"ok": True, "next": next_url})
+        return redirect(next_url)
     return render_template(
         "item_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         field_suggestions=get_field_suggestions(collection_id),
         item=None,
         tags="",
+        known_tags=get_known_tags(collection["owner_id"]),
     )
 
 
@@ -2328,6 +2426,7 @@ def item_detail(item_id):
         "item_detail.html",
         item=item,
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         values=values,
         images=images,
@@ -2349,6 +2448,10 @@ def edit_item(item_id):
         abort(403)
     fields = get_fields(item["collection_id"])
     if request.method == "POST":
+        if not request.form.get("name", "").strip():
+            if is_background_request():
+                return jsonify({"ok": False, "error": "Enter an item name."}), 400
+            abort(400, description="Enter an item name.")
         db.execute(
             "update items set name = ?, description = ?, item_uuid = ?, rfid_uid = ?, updated_at = current_timestamp where id = ?",
             (request.form["name"].strip(), request.form.get("description", "").strip(), *scan_api.identity(request.form), item_id),
@@ -2366,19 +2469,31 @@ def edit_item(item_id):
         replace_item_tags(item_id, parse_tags(request.form.get("tags", "")))
         save_uploaded_images(item_id, request.files.getlist("images"))
         db.commit()
-        return redirect(url_for("item_detail", item_id=item_id))
+        next_url = url_for("item_detail", item_id=item_id, return_to=collection_return_url(collection["id"]))
+        flash("Item saved.", "success")
+        if is_background_request():
+            return jsonify({"ok": True, "next": next_url})
+        return redirect(next_url)
     values = {
         row["field_id"]: row["value"]
         for row in db.execute("select field_id, value from item_values where item_id = ?", (item_id,))
     }
+    images = db.execute(
+        "select * from item_images where item_id = ? "
+        "order by gallery_enabled desc, gallery_position, position, id", (item_id,)
+    ).fetchall()
     return render_template(
         "item_form.html",
         collection=collection,
+        return_to=collection_return_url(collection["id"]),
         fields=fields,
         field_suggestions=get_field_suggestions(item["collection_id"]),
         item=item,
         values=values,
         tags=", ".join(get_item_tags(item_id)),
+        known_tags=get_known_tags(collection["owner_id"]),
+        images=images,
+        captures={image["id"]: json.loads(image["capture_metadata"]) for image in images if image["capture_metadata"]},
     )
 
 
@@ -3612,19 +3727,10 @@ def delete_field(field_id):
 def admin_settings():
     db = get_db()
     if request.method == "POST":
-        ratios = {}
-        for key in ("gallery_ratio_width", "gallery_ratio_height"):
-            try:
-                value = int(request.form.get(key, "1"))
-            except ValueError:
-                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
-            if not 1 <= value <= 6:
-                abort(400, description="Gallery aspect ratio must use whole numbers from 1 to 6.")
-            ratios[key] = str(value)
-        for key in ("site_name", "default_view", *ratios):
+        for key in ("site_name", "default_view"):
             db.execute(
                 "insert into settings (key, value) values (?, ?) on conflict(key) do update set value = excluded.value",
-                (key, ratios[key] if key in ratios else request.form.get(key, "").strip()),
+                (key, request.form.get(key, "").strip()),
             )
         db.commit()
         flash("Settings saved.", "success")

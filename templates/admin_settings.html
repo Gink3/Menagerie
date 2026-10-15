@@ -8,18 +8,12 @@
   <a href="{{ url_for('admin_settings') }}">Settings</a>
 </div>
 <div class="page-head"><h1>Settings</h1></div>
-<form method="post" class="panel stack">
+<form method="post" class="panel stack editor-form">
   {{ csrf_field()|safe }}
+  <fieldset class="form-section stack"><legend>General</legend>
   <label>Site name<input name="site_name" value="{{ settings.get('site_name', 'Menagerie') }}"></label>
   <label>Default view<select name="default_view"><option value="table" {% if settings.get('default_view') == 'table' %}selected{% endif %}>table</option><option value="gallery" {% if settings.get('default_view') == 'gallery' %}selected{% endif %}>gallery</option></select></label>
-  <fieldset class="collection-fields">
-    <legend>Random gallery aspect ratio</legend>
-    <p class="meta" id="gallery-ratio-hint">Width × height in gallery units (1–6 each). Defaults to 1 × 1. Random tiles keep this ratio while varying in size.</p>
-    <div class="collection-field-row">
-      <label>Width<input type="number" name="gallery_ratio_width" min="1" max="6" step="1" required aria-describedby="gallery-ratio-hint" value="{{ settings.get('gallery_ratio_width', '1') }}"></label>
-      <label>Height<input type="number" name="gallery_ratio_height" min="1" max="6" step="1" required aria-describedby="gallery-ratio-hint" value="{{ settings.get('gallery_ratio_height', '1') }}"></label>
-    </div>
   </fieldset>
-  <button type="submit">Save settings</button>
+  <div class="form-footer"><button type="submit">Save settings</button></div>
 </form>
 {% endblock %}

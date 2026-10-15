@@ -25,6 +25,10 @@ The collection view shows a wide, filterable table for a single collection. Cust
 
 The gallery view displays selected item images as visual tiles. Each tile highlights the item name and owner, using the saved crop and gallery layout so collectors can present selected items as a browsable showcase.
 
+Each image has its own random-gallery aspect ratio, defaulting to **1 × 1**. Open **Edit item**, select a photograph, and choose **Frame image** to set **Width** and **Height** (whole numbers from 1 to 6, in gallery units). The framing preview updates and saves automatically. The public random gallery shows one tile per item, using its first gallery-enabled photograph in saved gallery order. That photograph supplies the tile’s aspect ratio; additional photographs do not create duplicate entries. Personal galleries retain their saved item layouts and slideshows.
+
+On **Frame image**, click or tap a detail in the original photograph to choose a focal point—for example, the model’s face—then adjust zoom. **Fine-tune focus** contains horizontal and vertical sliders for precise and keyboard adjustments. **Done** returns to the item’s Photographs section. The preview and gallery keep that source-image point centered as the tile changes size, clamping at the image edges to avoid empty space. The focal point saves per photograph. **Reset framing** clears it and restores centered framing at 1× zoom; existing pan/zoom settings remain unchanged until a focal point is chosen. Restart Menagerie after updating to add the per-image settings to existing databases; existing photos receive 1 × 1 without changing their saved pan or zoom.
+
 ## Run Locally
 
 ```powershell
@@ -161,6 +165,14 @@ Photo updates use the same multipart metadata/images format and UUID `Idempotenc
 
 Conflict replies include `code`: `identity_conflict`, `submission_changed`, or `item_deleted`. For identity conflicts, an owned conflicting item and its edit URL are returned when available; another owner's item is never disclosed. Mini Scan keeps conflicting drafts and offers explicit recovery, while uncertain network/server failures retain the original frozen submission for retry. Offline Capture drafts use cached schemas and defer tag lookup until upload.
 
+### Editing items and tags
+
+The item editor has one **Photographs** section for existing images and pending uploads. Select a photograph to use the shared **Frame image**, **Move earlier/later**, and **More actions → Delete selected image** controls. The first enabled photograph is marked **Random gallery image**; selection and ordering update that marker. Photo settings save automatically, with inline status and a **Retry** button on failure. **Frame image** opens a separate tab; saved framing settings refresh when returning to the original editor.
+
+New uploads show thumbnails and can be removed individually before saving. The single **Save item / Cancel** bar stays within reach while scrolling and shows whether item details or uploads are unsaved. Leaving with unsaved changes prompts a browser warning. **Save item** saves details, tags, and pending photographs; failed saves retain entries and files and reuse the Save button for retry. Returning to a collection through its breadcrumb preserves the original filters, view, sort, and scroll position.
+
+Tags appear as individual removable chips. Type to see suggestions from tags used in the collection owner's items, or enter a new tag. Press Enter or comma to add, use arrow keys to select a suggestion, and click × to remove. Tags are normalized to lowercase and duplicates are ignored. Any tag still being typed is included when saving. Without JavaScript, the editor retains the comma-separated tag field.
+
 ### Collection requirements
 
 Name, Description, Tags and ordered photos are built-in item properties rather than custom collection fields. Name, the built-in UUID and one selected photo are required for Mini Scan uploads. Mini Scan populates `item_uuid` for every scanned or manually created item. There is no separate Mini ID requirement; existing custom Mini ID fields and their values are left intact as ordinary fields. RFID is an optional association that can be attached or replaced later in Menagerie. No fields are added to existing collections automatically.
@@ -184,7 +196,7 @@ Tests: `.venv/bin/python -m unittest discover -s tests`. Tests use temporary dat
 
 Choose **Dropdown** when adding a field in the collection editor or Admin → Fields. Enter its allowed options one per line. Empty lines and duplicate options are ignored; at least one option is required, with a maximum of 200 options of 200 characters each. The item form and Mini Scan render these fields as selection menus. API and browser submissions reject values outside the configured list.
 
-On a collection page, expand **<field name> options** and use **Add option** to extend the list. Collection managers can add options; viewers cannot. Collection filters also use the dropdown choices and match the selected option exactly. Existing options in use cannot be removed from a field definition, preventing saved item values from becoming invalid.
+Use **Edit collection**, find the dropdown field, and add its choices under **Options**, one per line. Save the collection to apply them. Collection managers can edit options; viewers cannot. Administration → Fields links to this same editor. Administrators can adjust field position or mark an existing field for removal under **More actions**; removal and its saved item values are deleted only when saving the collection, with **Undo** available beforehand. Ordering and deletion retain their administrator-only permissions. Collection filters also use the dropdown choices and match the selected option exactly. Existing options in use cannot be removed from a field definition, preventing saved item values from becoming invalid.
 
 Migration 16 adds dropdown option storage. Restart Menagerie after updating. In Mini Scan, close item dialogs and refresh collections to load newly added options; reopening a local draft refreshes its field definitions without changing its UUID.
 

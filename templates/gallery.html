@@ -3,12 +3,16 @@
 {% block content %}
 <div class="page-head">
   <div>
+    <span class="page-eyebrow">{% if owner %}Collector gallery{% else %}The Menagerie{% endif %}</span>
     <h1>{% if owner %}{{ owner.username }}'s gallery{% else %}Gallery{% endif %}</h1>
     <p>{% if owner %}A tile layout of selected collection images.{% else %}Selected gallery images from across Menagerie.{% endif %}</p>
   </div>
+  <div class="actions"><span class="meta">{{ images|length }} {{ 'item' if images|length == 1 else 'items' }}</span>
   {% if editable %}
+    <span class="meta" id="gallery-layout-status" role="status">Layout saved</span>
     <button class="button subtle" id="save-gallery-layout" type="button">Save layout</button>
   {% endif %}
+  </div>
 </div>
 
 <div class="tile-gallery{% if editable %} editable{% endif %}" data-editable="{{ 'true' if editable else 'false' }}">
@@ -16,7 +20,7 @@
     <article class="tile" draggable="{{ 'true' if editable else 'false' }}" data-id="{{ item.id }}" data-x="{{ item.gallery_x }}" data-y="{{ item.gallery_y }}" data-w="{{ item.gallery_w }}" data-h="{{ item.gallery_h }}" data-slide="0" style="--tile-x: {{ item.gallery_x + 1 }}; --tile-y: {{ item.gallery_y + 1 }}; --tile-w: {{ item.gallery_w }}; --tile-h: {{ item.gallery_h }};">
       <a class="tile-link" href="{{ url_for('item_detail', item_id=item.id) }}">
         {% for image in item.images %}
-          <img class="tile-slide{% if loop.first %} active{% endif %}" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+          <img class="tile-slide{% if loop.first %} active{% endif %}" src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
         {% endfor %}
       </a>
       {% if item.images|length > 1 %}
@@ -35,8 +39,7 @@
         <div class="tile-tools">
           <details class="tile-menu">
             <summary aria-label="Image menu">&vellip;</summary>
-            <a href="{{ url_for('item_detail', item_id=item.id) }}">Item images</a>
-            {% for image in item.images %}<a href="{{ url_for('image_settings', image_id=image.id) }}">Frame {{ image.original_name }}</a>{% endfor %}
+            <a href="{{ url_for('edit_item', item_id=item.id) }}#photographs">Manage photographs</a>
           </details>
         </div>
         <span class="tile-resize-handle east" data-resize="east" aria-hidden="true"></span>
@@ -71,6 +74,16 @@
     const saveButton = document.querySelector("#save-gallery-layout");
     let draggedTile = null;
     let resizeState = null;
+    let layoutRevision = 0;
+    let savedRevision = 0;
+    const layoutStatus = document.querySelector("#gallery-layout-status");
+    const markLayoutChanged = () => {
+      layoutRevision++;
+      window.MenagerieFeedback.set(layoutStatus, "pending", "Unsaved layout changes");
+    };
+    window.addEventListener("beforeunload", (event) => {
+      if (layoutRevision !== savedRevision) { event.preventDefault(); event.returnValue = ""; }
+    });
 
     const syncTileStyle = (tile) => {
       tile.style.setProperty("--tile-x", Number(tile.dataset.x) + 1);
@@ -106,6 +119,7 @@
       target.dataset.y = dragged.y;
       syncTileStyle(draggedTile);
       syncTileStyle(target);
+      markLayoutChanged();
     });
 
     gallery?.addEventListener("pointerdown", (event) => {
@@ -151,6 +165,7 @@
       resizeState.tile.dataset.w = w;
       resizeState.tile.dataset.h = h;
       syncTileStyle(resizeState.tile);
+      markLayoutChanged();
     });
 
     gallery?.addEventListener("pointerup", () => { resizeState = null; });
@@ -164,13 +179,23 @@
         w: Number(tile.dataset.w),
         h: Number(tile.dataset.h),
       }));
-      const response = await fetch("{{ url_for('save_gallery_layout') }}", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}" },
-        body: JSON.stringify(updates),
-      });
-      saveButton.textContent = response.ok ? "Saved" : "Could not save";
-      setTimeout(() => { saveButton.textContent = "Save layout"; }, 1400);
+      const revision = layoutRevision;
+      saveButton.disabled = true;
+      window.MenagerieFeedback.set(layoutStatus, "saving", "Saving…");
+      try {
+        await window.MenagerieFeedback.request("{{ url_for('save_gallery_layout') }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": "{{ csrf_token() }}", "X-Requested-With": "fetch" },
+          body: JSON.stringify(updates)
+        });
+        savedRevision = revision;
+        window.MenagerieFeedback.set(layoutStatus, savedRevision === layoutRevision ? "saved" : "pending",
+          savedRevision === layoutRevision ? "Layout saved" : "Unsaved layout changes");
+        saveButton.textContent = "Save layout";
+      } catch (error) {
+        window.MenagerieFeedback.set(layoutStatus, "error", error.message);
+        saveButton.textContent = "Retry save";
+      } finally { saveButton.disabled = false; }
     });
   </script>
 {% endif %}

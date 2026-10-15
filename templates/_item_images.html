@@ -1,0 +1,47 @@
+<div class="item-image-manager">
+  <div class="image-selection-toolbar" aria-label="Selected image actions">
+    <span class="meta" id="selected-image-status" role="status">Select a photograph below.</span>
+    <div class="selected-image-actions">
+      <a class="button subtle" id="frame-selected-image" target="_blank" rel="noopener" hidden>Frame image ↗</a>
+      <div class="image-reorder-controls" role="group" aria-label="Reorder selected photograph">
+        <button class="subtle" type="button" data-image-move="-1" disabled>Move earlier</button>
+        <button class="subtle" type="button" data-image-move="1" disabled>Move later</button>
+      </div>
+      <details class="selected-image-more">
+        <summary>More actions</summary>
+        <form action="{{ url_for('delete_selected_item_image', item_id=item.id) }}" method="post" data-background-delete>
+          {{ csrf_field()|safe }}
+          <input id="selected-image-id" name="image_id" type="hidden">
+          <button class="danger" id="delete-selected-image" type="submit" disabled>Delete selected image</button>
+        </form>
+      </details>
+    </div>
+  </div>
+  <form class="image-strip" tabindex="-1" action="{{ url_for('update_item_image_gallery', item_id=item.id) }}" method="post">
+    {{ csrf_field()|safe }}
+    {% set gallery_cover = namespace(found=false) %}
+    {% for image in images %}
+      <figure class="item-image-row" data-image-id="{{ image.id }}" data-image-name="{{ image.original_name }}" data-frame-url="{{ url_for('image_settings', image_id=image.id, return_to=return_to) }}" draggable="true" tabindex="0" aria-label="Select photograph: {{ image.original_name }}">
+        <div class="cropped-image">
+          <img src="{{ url_for('uploaded_file', filename=image.filename) }}" alt="{{ image.original_name }}" {% include "_image_focus.html" %} style="object-position: {{ image.crop_x }}% {{ image.crop_y }}%; transform-origin: {{ image.crop_x }}% {{ image.crop_y }}%; transform: scale({{ image.crop_zoom }});">
+        </div>
+        <figcaption class="image-actions">
+          <strong class="image-filename">{{ image.original_name }}</strong>
+          <span class="gallery-cover-badge" {% if not image.gallery_enabled or gallery_cover.found %}hidden{% endif %}>Random gallery image</span>
+          {% if image.gallery_enabled %}{% set gallery_cover.found = true %}{% endif %}
+          <label class="check-row"><input class="gallery-image-toggle" name="gallery_image_ids" type="checkbox" value="{{ image.id }}" {% if image.gallery_enabled %}checked{% endif %}> Show in gallery</label>
+          <input class="gallery-image-order" name="gallery_position_{{ image.id }}" type="hidden" value="{{ image.gallery_position + 1 }}">
+          <span class="meta image-ratio-summary">Random gallery: {{ image.gallery_ratio_width }} × {{ image.gallery_ratio_height }}</span>
+          {% if show_advanced_fields and image.id in captures %}
+            <details><summary>Capture record</summary><pre>{{ captures[image.id]|tojson(indent=2) }}</pre></details>
+          {% endif %}
+          <noscript><a href="{{ url_for('image_settings', image_id=image.id, return_to=return_to) }}">Frame image</a></noscript>
+        </figcaption>
+      </figure>
+    {% endfor %}
+    <noscript><button type="submit">Save photo settings</button></noscript>
+  </form>
+  <p class="meta" id="gallery-selection-summary">{% if gallery_cover.found %}The first enabled photograph represents this item in the random gallery.{% else %}No photographs selected for galleries.{% endif %}</p>
+  <div class="save-feedback"><p class="meta" id="gallery-image-status" role="status">Photo settings saved</p><button class="subtle" type="button" id="retry-photo-settings" hidden>Retry</button></div>
+</div>
+<script src="{{ url_for('static', filename='item-images.js') }}" defer></script>
